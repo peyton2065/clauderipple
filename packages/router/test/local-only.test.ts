@@ -23,3 +23,8 @@ test("initial config refuses a non-loopback listener", (t) => {
   fs.writeFileSync(file, JSON.stringify({ listen: { host: "0.0.0.0", port: 8790 } }));
   assert.throws(() => new ConfigStore(file), /listen.host must be 127\.0\.0\.1/);
 });
+
+test("router startup has no SSH reverse-tunnel lifecycle", () => {
+  const source = fs.readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /RemoteTunnels|remote-tunnel|remote-host|spawnSsh|syncRemoteAssets/);
+});
