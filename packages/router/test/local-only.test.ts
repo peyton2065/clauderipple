@@ -28,3 +28,8 @@ test("router startup has no SSH reverse-tunnel lifecycle", () => {
   const source = fs.readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
   assert.doesNotMatch(source, /RemoteTunnels|remote-tunnel|remote-host|spawnSsh|syncRemoteAssets/);
 });
+
+test("legacy remote host configuration is refused", () => {
+  const withRemote = { ...DEFAULTS, remote: { hosts: [] } };
+  assert.ok(validate(withRemote).includes("remote configuration is not supported in this local-only build"));
+});
