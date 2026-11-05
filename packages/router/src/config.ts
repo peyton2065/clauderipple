@@ -1050,10 +1050,14 @@ export class ConfigStore {
       // references it carries have to be the ones that get checked.
       const next = foldSplitProviders(merge(DEFAULTS, parsed));
       const errors = validate(next);
+      if (initial && errors.includes("listen.host must be 127.0.0.1")) {
+        throw new Error("listen.host must be 127.0.0.1");
+      }
       if (errors.length === 0 || initial) this.current = next;
       this.mtimeMs = st.mtimeMs;
       this.onChange?.(this.current, errors);
     } catch (e) {
+      if (initial && (e as Error).message === "listen.host must be 127.0.0.1") throw e;
       this.mtimeMs = st.mtimeMs; // do not re-parse a broken file on every request
       this.onChange?.(this.current, [`config parse error: ${(e as Error).message}`]);
     }
