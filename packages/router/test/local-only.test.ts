@@ -33,3 +33,11 @@ test("legacy remote host configuration is refused", () => {
   const withRemote = { ...DEFAULTS, remote: { hosts: [] } };
   assert.ok(validate(withRemote).includes("remote configuration is not supported in this local-only build"));
 });
+
+test("initial config refuses legacy remote host settings", (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clauderipple-local-only-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, "config.json");
+  fs.writeFileSync(file, JSON.stringify({ remote: { hosts: [] } }));
+  assert.throws(() => new ConfigStore(file), /remote configuration is not supported in this local-only build/);
+});
