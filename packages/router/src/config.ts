@@ -795,8 +795,11 @@ function foldSplitProviders(c: Config): Config {
   };
 }
 
+export const LOCAL_ONLY_LISTEN_HOST = "127.0.0.1";
+
 export function validate(c: Config): string[] {
   const errors: string[] = [];
+  if (c.listen.host !== LOCAL_ONLY_LISTEN_HOST) errors.push(`listen.host must be ${LOCAL_ONLY_LISTEN_HOST}`);
   if (c.autoUpdate !== undefined && typeof c.autoUpdate !== "boolean") errors.push("autoUpdate must be true or false");
   if (c.processPriority !== undefined && !PROCESS_PRIORITIES.includes(c.processPriority as ProcessPriority)) {
     errors.push('processPriority must be "below-normal", "normal", "above-normal" or "high"');
