@@ -21,5 +21,5 @@ test("initial config refuses a non-loopback listener", (t) => {
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const file = path.join(dir, "config.json");
   fs.writeFileSync(file, JSON.stringify({ listen: { host: "0.0.0.0", port: 8790 } }));
-  assert.throws(() => new ConfigStore(file), /listen.host must be 127\\.0\\.0\\.1/);
+  assert.throws(() => new ConfigStore(file), /listen.host must be 127\.0\.0\.1/);
 });
