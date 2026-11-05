@@ -238,10 +238,6 @@ let pickerBusy = false;
 let probeStates = new Map();
 let chatgptLoginBusy = false;
 let chatgptLoginMessage = "";
-let phoneGeneration = 0;
-let phoneSnapshot = null;
-let phoneQrGeneration = 0;
-let phoneBusy = false;
 
 function selectOption(value, text) { return el("option", { value }, [text]); }
 function badge(kind, text) { return el("span", { class: `badge ${kind} dot`, text }, []); }
@@ -284,7 +280,6 @@ function svgIcon(viewBox, paths, cls) {
 function chevronIcon() { return svgIcon("0 0 8 13", ["M1.5 1.5l5 5-5 5"], "chevron"); }
 
 function showView(name) {
-  if (name !== "phone") { phoneGeneration++; hidePhoneQr(); }
   for (const button of $all(".nav-btn")) {
     const active = button.dataset.view === name;
     button.classList.toggle("active", active);
@@ -297,7 +292,6 @@ function showView(name) {
   // With the router down (inside the app) a page has nothing to load; it says so instead of
   // failing, and loads when the router is back (setRouterDown).
   if (offline()) return;
-  if (name === "phone") queueMicrotask(() => void loadPhone());
   if (name === "mac") queueMicrotask(() => void loadMac());
   if (name === "slots" && !slotsLoaded) void loadSlots();
   if (name === "providers" && !providersLoaded) void loadProviders();
@@ -486,7 +480,7 @@ async function toggleAutoUpdate(enabled) {
   }
 }
 
-// How much CPU priority the router and the phone host ask Windows for (config processPriority,
+// How much CPU priority the router asks Windows for (config processPriority,
 // Normal unless set). Task Scheduler had started them below Normal, and a build holding every core
 // starved the router until an update could not reach it (2026-10-29). High puts ClaudeRipple ahead
 // of other programs, so choosing it asks first and the row says so while it is on.
@@ -1545,156 +1539,6 @@ async function toggleCodex(enabled) {
 }
 void Promise.all([loadCatalogs(), refreshHealth()]);
 setInterval(refreshHealth, 5000);
-
-// ---- Phone --------------------------------------------------------------------------
-
-function hidePhoneQr() {
-  phoneQrGeneration++;
-  const box = $("#phone-qr");
-  if (box) box.replaceChildren();
-}
-function phoneActive() { return $("#view-phone").classList.contains("active"); }
-function phonePost(route, body) {
-  return api(`/api/phone/${route}`, { method: "POST", headers: { "content-type": "application/json" }, ...(body ? { body: JSON.stringify(body) } : {}) });
-}
-async function showPhoneQr(button) {
-  if (phoneBusy) return;
-  const generation = ++phoneQrGeneration;
-  button.disabled = true;
-  try {
-    const pairing = await api("/api/phone/pairing");
-    if (generation !== phoneQrGeneration || !phoneActive()) return;
-    const copy = el("button", { class: "btn secondary", type: "button", text: t("phone.copyLink") });
-    copy.addEventListener("click", async () => {
-      try { await navigator.clipboard.writeText(pairing.url); toast(t("phone.copied")); }
-      catch { toast(t("phone.copyFailed"), true); }
-    });
-    // An image, never trusted SVG markup in the dashboard's DOM.
-    $("#phone-qr").replaceChildren(el("img", { class: "phone-qr-image", alt: t("phone.qrAlt"), src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(pairing.svg)}`, width: "240", height: "240" }), copy,
-      el("button", { class: "btn secondary", type: "button", text: t("common.hide"), onclick: hidePhoneQr }));
-  } catch { if (generation === phoneQrGeneration) toast(t("common.loadFailed"), true); }
-  finally { button.disabled = false; }
-}
-// Ripple Remote in the stores. iPhone links to the storefront of the dashboard's language, as the
-// README headers do; Android is a closed test on Google Play, joined through Discord, so no Play link.
-const REMOTE_STOREFRONT = { ko: "kr", en: "us", zh: "us", ja: "jp", es: "es", pt: "br" };
-/** Read when drawn, not at load: this block is also evaluated on its own by the phone tests. */
-function remoteAppStoreUrl() { return `https://apps.apple.com/${REMOTE_STOREFRONT[CURRENT_LANG] || "us"}/app/id6823063731`; }
-const COMMUNITY_URL = "https://discord.gg/R8ZgGSNHjw";
-function externalLink(href, cls, children) { return el("a", { class: cls, href, target: "_blank", rel: "noopener noreferrer" }, children); }
-function phonePaired(data) { return Boolean(data && data.hostRunning && data.phones && data.phones.length); }
-function remoteAndroidNote(cls) { return el("span", { class: `${cls} remote-android` }, [t("phone.promo.android"), " · ", externalLink(COMMUNITY_URL, "login-link", [t("phone.promo.androidLink")])]); }
-/** No phone paired yet: what the app does that nothing else does, the store, and how the QR below fits in. */
-function remotePromo(data) {
-  const points = ["models", "hours", "private"].map(key => el("li", {}, [el("strong", { text: t(`phone.promo.${key}`) }), " ", t(`phone.promo.${key}Body`)]));
-  const phoneGlyph = svgIcon("0 0 20 20", ["M7 2h6a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z", "M8.5 14.8h3"]);
-  const download = svgIcon("0 0 20 20", ["M10 3.5v9", "M6.2 9l3.8 3.8L13.8 9", "M4.5 16.5h11"], "remote-store-icon");
-  // Its own lang, so Korean wraps between words in a browser too (the app sets it on <html>).
-  return el("section", { class: "conn-card remote-promo", lang: CURRENT_LANG }, [
-    el("div", { class: "conn-hero" }, [el("div", { class: "conn-icon" }, [phoneGlyph]), el("div", { class: "conn-hero-text" }, [
-      el("p", { class: "remote-eyebrow", text: t("phone.promo.eyebrow") }),
-      el("h2", { class: "conn-title", text: t("phone.promo.title") }),
-      el("p", { class: "conn-lead", text: t("phone.promo.lead") }),
-    ])]),
-    el("ul", { class: "remote-points" }, points),
-    el("div", { class: "remote-get" }, [externalLink(remoteAppStoreUrl(), "btn large remote-store", [download, t("phone.promo.appStore")]), remoteAndroidNote("hint")]),
-    el("p", { class: "remote-next", text: t(data.hostRunning ? "phone.promo.nextQr" : "phone.promo.nextHost") }),
-  ]);
-}
-/** A phone is paired already: one quiet row for the next phone instead of the pitch. */
-function remoteGetApp() {
-  return section(null, [cell(t("phone.promo.compact"), externalLink(remoteAppStoreUrl(), "btn secondary compact", [t("phone.promo.appStoreShort")]), [remoteAndroidNote("cell-sub")])]);
-}
-function renderPhoneStatus(data) {
-  const rows = [cell(t("phone.host"), badge(data.hostRunning ? "ok" : "warn", t(data.hostRunning ? "phone.running" : "phone.stopped")))];
-  if (data.hostRunning) rows.push(cell(t("phone.mode"), el("span", { text: t(data.mode === "relay" ? "phone.relayStatus" : data.mode === "direct" ? "phone.directStatus" : "phone.localStatus") }), `${data.bind}:${data.port} · ${data.version}`),
-    cell(t("phone.notifications"), badge(data.pushReady ? "ok" : "warn", t(data.pushReady ? "phone.ready" : "phone.needsRelay"))));
-  else rows.push(el("div", { class: "cell-note" }, [hint(t("phone.install")), el("code", { text: data.hint })]));
-  $("#phone-status").replaceChildren(...rows);
-  if (!data.hostRunning) return;
-  $("#phone-phones").replaceChildren(...(data.phones.length ? data.phones.map(phone => cell(
-    el("span", { class: "cell-label mono", text: phone.clientId.length > 12 ? `${phone.clientId.slice(0, 12)}…` : phone.clientId, title: phone.clientId }),
-    badge(phone.connected ? "ok" : "", t(phone.connected ? "phone.connected" : "phone.offline")),
-    [phone.lastSeen ? t("phone.lastSeen", { time: new Date(phone.lastSeen).toLocaleString(CURRENT_LANG) }) : t("phone.unknownSeen"), t(phone.push ? "phone.pushOn" : "phone.pushOff")],
-  )) : [el("div", { class: "cell-note", text: t("phone.empty") })]));
-  $("#phone-restart").hidden = !data.restartRequired;
-}
-function phoneSettings(data) {
-  // The phone app pairs through the Relay only, so phone access is on (Relay) or off. A custom
-  // relay address stays in the host's config file; the dashboard keeps whichever one is saved.
-  const saved = data.settings;
-  const selected = saved.relay ? "relay" : "local";
-  const choices = ["relay", "local"].map(value => {
-    const radio = el("input", { type: "radio", name: "phone-mode", value, checked: value === selected });
-    return el("label", { class: "cell phone-choice" }, [radio, el("span", { class: "cell-text" }, [el("span", { class: "cell-label", text: t(`phone.choice.${value}`) }), el("span", { class: "cell-sub", text: t(`phone.help.${value}`) })])]);
-  });
-  const save = el("button", { class: "btn", type: "button", text: t("common.save") });
-  save.addEventListener("click", async () => {
-    if (phoneBusy) return;
-    const mode = $('#phone-content input[name="phone-mode"]:checked').value;
-    phoneBusy = true; save.disabled = true;
-    hidePhoneQr();
-    try {
-      const result = await phonePost("settings", mode === "relay" ? { relay: saved.relay || data.defaultRelay, bind: "local" } : { relay: "off", bind: "local" });
-      toast(t(result.restartRequired ? "phone.restartRequired" : "common.saved"));
-      await refreshPhone();
-    } catch (error) { toast(t("common.saveFailed"), true, error.message); }
-    finally { phoneBusy = false; save.disabled = false; }
-  });
-  return section(t("phone.settings"), [...choices, cell(t("phone.apply"), save)]);
-}
-function phoneRestart() {
-  const button = el("button", { class: "btn secondary", type: "button", text: t("phone.restart") });
-  const message = hint("");
-  button.addEventListener("click", async () => {
-    if (!confirm(t("phone.restartConfirm"))) return;
-    button.disabled = true;
-    hidePhoneQr();
-    try {
-      const result = await phonePost("restart");
-      if (result.manual) message.textContent = t("phone.manualRestart", { command: result.command });
-      else { toast(t("phone.restarting")); setTimeout(() => void loadPhone(), 2000); }
-    } catch (error) { toast(t("common.actionFailed"), true, error.message); }
-    finally { button.disabled = false; }
-  });
-  return el("div", { id: "phone-restart", class: "group stacked-group", hidden: "" }, [cell(t("phone.restartRequired"), button, message, "wide")]);
-}
-function phoneControls(data) {
-  const qr = el("button", { class: "btn secondary", type: "button", text: t("phone.showQr") });
-  qr.addEventListener("click", () => void showPhoneQr(qr));
-  const rotate = el("button", { class: "cell-button destructive", type: "button", text: t("phone.rotate") });
-  rotate.addEventListener("click", async () => {
-    if (phoneBusy || !confirm(t("phone.rotateConfirm"))) return;
-    phoneBusy = true; rotate.disabled = true; hidePhoneQr();
-    try { await phonePost("rotate"); toast(t("phone.rotated")); await refreshPhone(); }
-    catch (error) { toast(t("common.actionFailed"), true, error.message); }
-    finally { phoneBusy = false; rotate.disabled = false; }
-  });
-  const phones = section(t("phone.phones"), []);
-  $(".group", phones).id = "phone-phones";
-  return [section(t("phone.pairing"), [cell(t("phone.scan"), qr, t("phone.scanHelp")), el("div", { id: "phone-qr", class: "phone-qr" })], [t("phone.qrWarning"), !data.reachableFromPhone ? t("phone.unreachable") : null]),
-    phoneSettings(data), phoneRestart(), phones, phonePaired(data) ? remoteGetApp() : null, section(null, [rotate], t("phone.sharedKey"))].filter(Boolean);
-}
-async function refreshPhone(rebuild = false) {
-  if (!phoneActive() || offline()) return;
-  const generation = phoneGeneration;
-  try {
-    const data = await api("/api/phone/status");
-    if (generation !== phoneGeneration || !phoneActive()) return;
-    // Pairing the first phone (or unpairing the last) swaps the pitch for its one-row form, so it rebuilds too.
-    if (rebuild || !phoneSnapshot || phoneSnapshot.hostRunning !== data.hostRunning || phonePaired(phoneSnapshot) !== phonePaired(data)) {
-      hidePhoneQr();
-      const state = section(t("phone.status"), []);
-      $(".group", state).id = "phone-status";
-      $("#phone-content").replaceChildren(...(phonePaired(data) ? [] : [remotePromo(data)]), state, ...(data.hostRunning ? phoneControls(data) : []));
-    }
-    phoneSnapshot = data;
-    renderPhoneStatus(data);
-  } catch (error) { toast(t("common.loadFailed"), true, error.message); }
-}
-async function loadPhone() { phoneGeneration++; hidePhoneQr(); await refreshPhone(true); }
-$("#phone-refresh").addEventListener("click", () => void loadPhone());
-setInterval(() => { if (!phoneBusy) void refreshPhone(); }, 5000);
 
 // ---- Laptop: awake with the lid closed, and the phone hotspot when Wi-Fi fails -------------
 // GET|PUT /api/power (router power.ts) and POST|GET /api/power/setup, which runs the CLI's

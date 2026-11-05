@@ -1760,7 +1760,6 @@ function render(): void {
     { label: headline, click: () => void openDashboard() },
     ...(detail ? [{ label: detail, click: () => void openDashboard() } as Electron.MenuItemConstructorOptions] : []),
     ...claudeLines,
-    ...(s?.autoUpdate?.hostUpdate?.status === "pending" ? [{ label: "호스트 적용 대기", click: () => void openDashboard() }] : []),
     ...(availableUpdate
       ? [{ label: updating ? L.updating(availableUpdate.latest ?? "") : L.updateAvailableItem(availableUpdate.latest ?? ""), enabled: !updating, click: () => void offerUpdate(availableUpdate!) } as Electron.MenuItemConstructorOptions]
       : []),

@@ -7,7 +7,17 @@ import os from "node:os";
 import path from "node:path";
 import { saveClaudeAuthFile } from "../../router/src/providers/anthropic-token-file.ts";
 import { removeAllClaudeAccounts } from "../../router/src/providers/anthropic-accounts.ts";
-import { windowsDesktopRoots } from "../../remote/src/desktop-paths.ts";
+/** Find complete packaged Claude Desktop profiles without selecting an ambiguous account. */
+function windowsDesktopRoots(localAppData = process.env.LOCALAPPDATA): string[] {
+  if (!localAppData) return [];
+  const parent = path.join(localAppData, "Claude-Data");
+  let entries: fs.Dirent[];
+  try { entries = fs.readdirSync(parent, { withFileTypes: true }); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
+  return entries.filter(entry => entry.isDirectory() && /^claude_/i.test(entry.name)).map(entry => path.join(parent, entry.name))
+    .filter(root => ["config.json", "claude_desktop_config.json", "claude-code-sessions", path.join("Local Storage", "leveldb")].every(name => fs.existsSync(path.join(root, name))));
+}
+
 
 function isSetupToken(value: string): boolean {
   return /^sk-ant-oat01-[A-Za-z0-9._~-]{16,}$/.test(value);
