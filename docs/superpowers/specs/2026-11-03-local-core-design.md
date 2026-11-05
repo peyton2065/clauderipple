@@ -35,3 +35,10 @@ Use a hard-coded local-only policy rather than a user-controlled "LAN mode" sett
 - `127.0.0.1` is the only accepted retained listener address. Do not silently rewrite a user-provided host.
 - All new behavior follows test-first development.
 
+
+## Initial Source Inventory
+
+- `packages/router/src/index.ts` starts the retained local proxy and OpenAI ingress, and also creates `RemoteTunnels`; remove only the tunnel lifecycle.
+- `packages/router/src/remote-host.ts` and `remote-tunnel.ts` implement SSH host setup and reverse forwarding. `packages/cli/src/remote.ts` exposes their management commands.
+- `packages/remote/` contains the optional phone host, pairing, relay, push, and mobile-facing service. Inspect references from CLI, router, app packaging, and root scripts before deleting it.
+- `packages/router/src/config.ts` owns the configurable proxy listen host. The retained admin, dashboard, and ingress listeners need an explicit loopback audit too.
