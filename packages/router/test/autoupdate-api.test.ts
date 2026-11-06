@@ -38,10 +38,12 @@ test("status, hot config and manual POST share the router's automatic-update coo
   try {
     const url = `http://127.0.0.1:${admin.port}`;
     const status = async () => ((await (await fetch(`${url}/api/status`)).json()) as { autoUpdate: AutoUpdateStatus }).autoUpdate;
-    assert.equal((await status()).enabled, true);
+    assert.equal((await status()).enabled, false);
     const config = (await (await fetch(`${url}/api/config`)).json()) as Config;
-    const put = await fetch(`${url}/api/config`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...config, autoUpdate: false }) });
-    assert.equal(put.status, 200); assert.equal((await status()).enabled, false);
+    const enabled = await fetch(`${url}/api/config`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...config, autoUpdate: true }) });
+    assert.equal(enabled.status, 200); assert.equal((await status()).enabled, true);
+    const disabled = await fetch(`${url}/api/config`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...config, autoUpdate: false }) });
+    assert.equal(disabled.status, 200); assert.equal((await status()).enabled, false);
     await fetch(`${url}/api/update`);
     assert.equal((await status()).available, "1.1.0");
     // Manual updates remain available with autoUpdate off, but concurrent launches are serialized.
