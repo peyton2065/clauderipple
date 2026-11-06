@@ -41,3 +41,14 @@ test("initial config refuses legacy remote host settings", (t) => {
   fs.writeFileSync(file, JSON.stringify({ remote: { hosts: [] } }));
   assert.throws(() => new ConfigStore(file), /remote configuration is not supported in this local-only build/);
 });
+
+test("OAuth callbacks bind only IPv4 loopback", () => {
+  for (const relative of ["../src/providers/claude-oauth.ts", "../src/providers/google/login.ts"]) {
+    const source = fs.readFileSync(new URL(relative, import.meta.url), "utf8");
+    assert.doesNotMatch(source, /\.listen\([^,\n]+,\s*"::1"/);
+  }
+});
+
+test("automatic updates are disabled by default in the local-only fork", () => {
+  assert.equal(DEFAULTS.autoUpdate, false);
+});
