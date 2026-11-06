@@ -208,7 +208,7 @@ test("stopping or opting out during a pending check prevents automatic installat
   resolve({ ok: true, output: JSON.stringify(f.check) }); await f.clock.flush();
   assert.equal(f.launches, 0); assert.equal(f.clock.tasks.length, 0);
 });
-test("autoUpdate validates booleans and hot-reloads with default-on omission", (t) => {
+test("autoUpdate validates booleans and hot-reloads with default-off omission", (t) => {
   const { f } = fixture(t);
   for (const autoUpdate of [true, false]) assert.deepEqual(validate({ ...DEFAULTS, autoUpdate }), []);
   for (const autoUpdate of [null, 0, "false", {}]) {
@@ -216,9 +216,9 @@ test("autoUpdate validates booleans and hot-reloads with default-on omission", (
     assert.ok(validate(config).includes("autoUpdate must be true or false"));
   }
   const file = path.join(f.home, "config.json"); fs.writeFileSync(file, "{}");
-  const store = new ConfigStore(file); assert.notEqual(store.get().autoUpdate, false);
-  fs.writeFileSync(file, '{"autoUpdate":false}'); fs.utimesSync(file, 5000, 5000);
-  assert.equal(store.get().autoUpdate, false);
+  const store = new ConfigStore(file); assert.equal(store.get().autoUpdate, false);
+  fs.writeFileSync(file, '{"autoUpdate":true}'); fs.utimesSync(file, 5000, 5000);
+  assert.equal(store.get().autoUpdate, true);
   fs.writeFileSync(file, '{}'); fs.utimesSync(file, 6000, 6000);
-  assert.notEqual(store.get().autoUpdate, false);
+  assert.equal(store.get().autoUpdate, false);
 });
