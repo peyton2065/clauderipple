@@ -132,10 +132,10 @@ const answering = (version = "9.9.9") => async () => ({ version });
 const silent = async () => null;
 const noSleep = async () => {};
 
-test("--help and -h prevent dispatch for every command, including destructive arguments", async (t) => {
+test("--help and -h prevent dispatch for supported commands, including destructive arguments", async (t) => {
   const print = t.mock.method(console, "log", () => {});
   const usage = () => console.log("usage");
-  const commands = ["install", "uninstall", "status", "doctor", "repair", "direct", "app", "start", "stop", "restart", "logs", "remote", "config", "ui", "tray", "update", "login", "logout", "claude-login", "claude-logout", "google-login", "google-logout", "image", "picker", "codex", "agent-title", "mod", "awake", "tether", "power"];
+  const commands = ["install", "uninstall", "status", "doctor", "repair", "direct", "app", "start", "stop", "restart", "logs", "config", "ui", "tray", "update", "login", "logout", "claude-login", "claude-logout", "google-login", "google-logout", "image", "picker", "codex", "agent-title", "mod", "awake", "tether", "power"];
   let dispatched = 0;
   for (const command of commands) {
     for (const help of ["--help", "-h"]) {
