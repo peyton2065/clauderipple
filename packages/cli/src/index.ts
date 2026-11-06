@@ -9,7 +9,6 @@
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 import { ConfigStore, DEFAULTS, homeDir, configPath } from "../../router/src/config.ts";
 import { adminPort } from "../../router/src/admin.ts";
 import { CLI_WINDOW_MAX } from "../../router/src/bootstrap.ts";
@@ -30,8 +29,8 @@ import { ingressModels } from "../../router/src/ingress/models.ts";
 import { GROK_DEFAULT_URL } from "../../router/src/providers/grok/catalog.ts";
 import { claudeLogin, claudeLogout, desktopClaudeCodeDirs } from "./claude-auth.ts";
 import { openBrowser } from "./browser.ts";
-import { electronPath, installTrayRuntime, startTray } from "./tray.ts";
-import { dropPowerShellShim, installKind, isNewer, latestVersion, PACKAGE, runUpdate } from "./update.ts";
+import { installTrayRuntime, startTray } from "./tray.ts";
+import { dropPowerShellShim, installKind } from "./update.ts";
 import { ClaudeOAuthSession } from "../../router/src/providers/claude-oauth.ts";
 import { purgeHome } from "./purge.ts";
 
@@ -507,52 +506,16 @@ function logs(): void {
   });
 }
 
-/**
- * `update --check [--json]` reports; `update` installs the latest version the way this copy was
- * installed (update.ts) and fetches the tray's Electron again if the old copy had it.
- */
+/** No upstream package can replace this local-only fork through the CLI or the dashboard. */
 async function update(): Promise<void> {
   const kind = installKind(installedRuntime);
-  // CLAUDERIPPLE_PACKAGE names what to install instead of the registry's latest (a tarball, say).
-  const override = process.env.CLAUDERIPPLE_PACKAGE;
-  const latest = override ? null : await latestVersion();
-  const newer = latest ? isNewer(latest, VERSION) : true;
   if (flag("check")) {
-    if (flag("json")) console.log(JSON.stringify({ current: VERSION, latest, newer, kind: kind.kind }));
-    else console.log(newer ? `ClaudeRipple ${latest} is available (this is ${VERSION}). Update with: clauderipple update` : `ClaudeRipple ${VERSION} is the latest version`);
+    if (flag("json")) console.log(JSON.stringify({ current: VERSION, latest: null, newer: false, kind: kind.kind }));
+    else console.log("Automatic updates are disabled in this local-only fork. Install new versions from https://github.com/peyton2065/clauderipple.");
     return;
   }
-  if (kind.kind !== "script" && kind.kind !== "npm") {
-    process.exitCode = 1;
-    console.log(
-      kind.kind === "packaged" ? "This is the standalone app. Download the new version from https://github.com/PBJ-2/clauderipple/releases"
-      : kind.kind === "checkout" ? "This is a source checkout. Update it with git pull."
-      : `ClaudeRipple is installed at ${kind.root}, which is not a global npm install. Update it the way you installed it.`,
-    );
-    return;
-  }
-  if (!newer && !flag("force")) {
-    console.log(`✓ ClaudeRipple ${VERSION} is the latest version`);
-    return;
-  }
-  const hadTray = electronPath() !== null;
-  const spec = override ?? `${PACKAGE}@${latest}`;
-  console.log(`Updating ClaudeRipple ${VERSION} → ${latest ?? spec} (${kind.kind === "script" ? "install script" : "npm"}, ${kind.prefix})…`);
-  const result = runUpdate(kind, installedRuntime, spec);
-  if (result.ok && hadTray) {
-    // The new files decide where Electron lives; ask them, not this process's copy. --refresh also
-    // replaces a runtime the previous version fetched, which an install alone would keep (B15).
-    execFileSync(installedRuntime.node, [installedRuntime.cli, "tray", "--install", "--refresh"], { env: { ...process.env, ...installedRuntime.env }, stdio: "inherit" });
-  }
-  console.log(result.message);
-  if (!result.ok) process.exitCode = 1;
+  throw new Error("This local-only fork does not install upstream updates. Install a reviewed version from https://github.com/peyton2065/clauderipple.");
 }
-
-// ---- Recovery: doctor, repair, direct, app ------------------------------------------------
-//
-// The menu-bar app calls these when the router is down and the dashboard with it. With --json each
-// prints one JSON object on stdout and exits 0 whatever the diagnosis; a non-zero exit means the
-// command itself could not run.
 
 /** This machine's supervisor, registering this installation's runtime and files. */
 function recoveryDeps(): RecoveryDeps {
@@ -669,7 +632,7 @@ function help(): void {
   config            print the config file path
   ui                open the dashboard in your browser
   tray [--install]  start the menu-bar / tray app (--install fetches Electron, ~270MB, once)
-  update [--check]  install the latest version the way this one was installed (--check only reports)
+  update [--check]  report the fork update policy; install reviewed versions manually from the fork
   login             add a ChatGPT account (opens your browser; run again to add another — they take turns when one runs out)
   logout            forget every ChatGPT account added with "login" (the Codex CLI's own login is left alone)
   claude-login      connect a Claude subscription in the browser (--setup-token: via \`claude setup-token\`; --manual: paste the code)
