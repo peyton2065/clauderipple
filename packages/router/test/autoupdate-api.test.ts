@@ -42,7 +42,8 @@ test("status, hot config and manual POST share the router's automatic-update coo
     const config = (await (await fetch(`${url}/api/config`)).json()) as Config;
     const enabled = await fetch(`${url}/api/config`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...config, autoUpdate: true }) });
     assert.equal(enabled.status, 200); assert.equal((await status()).enabled, true);
-    const disabled = await fetch(`${url}/api/config`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...config, autoUpdate: false }) });
+    const enabledConfig = (await (await fetch(`${url}/api/config`)).json()) as Config;
+    const disabled = await fetch(`${url}/api/config`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...enabledConfig, autoUpdate: false }) });
     assert.equal(disabled.status, 200); assert.equal((await status()).enabled, false);
     await fetch(`${url}/api/update`);
     assert.equal((await status()).available, "1.1.0");
