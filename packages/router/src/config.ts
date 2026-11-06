@@ -628,6 +628,7 @@ export function terminateHosts(c: Config): string[] {
 }
 
 export const DEFAULTS: Config = {
+  autoUpdate: false,
   listen: { host: "127.0.0.1", port: 8790 },
   upstream: "api.anthropic.com",
   providers: {},

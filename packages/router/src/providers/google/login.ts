@@ -117,7 +117,6 @@ export class GoogleOAuthSession {
   private readonly state = crypto.randomBytes(16).toString("hex");
   private redirectUri = "";
   private server: http.Server | null = null;
-  private server6: http.Server | null = null;
   private settle!: { resolve: (grant: GoogleOAuthGrant) => void; reject: (error: Error) => void };
   private readonly grant: Promise<GoogleOAuthGrant>;
   private timer: NodeJS.Timeout | null = null;
@@ -240,17 +239,6 @@ export class GoogleOAuthSession {
       server.listen(port, "127.0.0.1", () => {
         this.server = server;
         this.port = (server.address() as net.AddressInfo).port;
-        // The browser resolves "localhost" to ::1 or 127.0.0.1 as it likes; answer on both when IPv6
-        // loopback is available. Best effort.
-        const six = http.createServer(handler);
-        six.once("error", () => {});
-        six.listen(this.port, "::1", () => {
-          if (this.finished) {
-            six.close();
-            return;
-          }
-          this.server6 = six;
-        });
         resolve(true);
       });
     });
@@ -277,12 +265,10 @@ export class GoogleOAuthSession {
   private finish(): void {
     this.finished = true;
     if (this.timer) clearTimeout(this.timer);
-    for (const server of [this.server, this.server6]) {
-      if (!server) continue;
-      server.close();
-      (server as http.Server & { closeAllConnections?: () => void }).closeAllConnections?.();
+    if (this.server) {
+      this.server.close();
+      (this.server as http.Server & { closeAllConnections?: () => void }).closeAllConnections?.();
     }
     this.server = null;
-    this.server6 = null;
   }
 }

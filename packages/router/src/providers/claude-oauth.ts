@@ -166,7 +166,6 @@ export class ClaudeOAuthSession {
   private readonly state = base64url(crypto.randomBytes(32));
   private redirectUri = "";
   private server: http.Server | null = null;
-  private server6: http.Server | null = null;
   private settle!: { resolve: (grant: ClaudeOAuthGrant) => void; reject: (error: Error) => void };
   private readonly grant: Promise<ClaudeOAuthGrant>;
   private timer: NodeJS.Timeout | null = null;
@@ -289,17 +288,6 @@ export class ClaudeOAuthSession {
       server.listen(port, "127.0.0.1", () => {
         this.server = server;
         this.port = (server.address() as net.AddressInfo).port;
-        // The browser resolves "localhost" to ::1 or 127.0.0.1 as it likes; answer on both when
-        // IPv6 loopback is available. Best effort: the IPv4 listener alone is enough on most systems.
-        const six = http.createServer(handler);
-        six.once("error", () => {});
-        six.listen(this.port, "::1", () => {
-          if (this.finished) {
-            six.close();
-            return;
-          }
-          this.server6 = six;
-        });
         resolve(true);
       });
     });
@@ -334,14 +322,12 @@ export class ClaudeOAuthSession {
   private finish(): void {
     this.finished = true;
     if (this.timer) clearTimeout(this.timer);
-    for (const server of [this.server, this.server6]) {
-      if (!server) continue;
-      server.close();
+    if (this.server) {
+      this.server.close();
       // Keep-alive connections would otherwise hold the port for their idle timeout.
-      (server as http.Server & { closeAllConnections?: () => void }).closeAllConnections?.();
+      (this.server as http.Server & { closeAllConnections?: () => void }).closeAllConnections?.();
     }
     this.server = null;
-    this.server6 = null;
   }
 }
 
