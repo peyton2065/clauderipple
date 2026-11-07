@@ -72,3 +72,18 @@ test("status mod has no phone control integration", () => {
   const source = fs.readFileSync(new URL("../../mod/hooks/register.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(source, /pollPhoneInbox|phoneQueueOf|\/api\/phone-inbox|\/api\/settings-jobs/);
 });
+
+test("proxy rejects an unsafe host before binding", async () => {
+  const { Proxy } = await import("../src/proxy.ts");
+  let bound = false;
+  const fake = {
+    deps: { config: () => ({ ...DEFAULTS, listen: { host: "0.0.0.0", port: 0 } }) },
+    server: {
+      once: () => undefined,
+      off: () => undefined,
+      listen: (_port: number, _host: string, ready: () => void) => { bound = true; ready(); },
+    },
+  };
+  await assert.rejects(() => Proxy.prototype.listen.call(fake as unknown as InstanceType<typeof Proxy>), /listen.host must be 127\\.0\\.0\\.1/);
+  assert.equal(bound, false);
+});
