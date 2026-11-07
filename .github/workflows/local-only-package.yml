@@ -23,6 +23,7 @@ jobs:
       - name: Regenerate lockfile and install
         run: |
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          git diff --exit-code -- package-lock.json
           npm ci
       - name: Build and inspect package
         shell: bash
@@ -39,6 +40,14 @@ jobs:
           for file in package/bin/clauderipple.js package/dist/cli/src/index.js package/dist/router/src/index.js package/dist/ui/index.html; do
             grep -Fx "$file" package-contents.txt >/dev/null
           done
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          npm install --prefix "$tmp" --ignore-scripts --no-audit --no-fund "$(realpath "$tgz")" >/dev/null
+          node "$tmp/node_modules/clauderipple/bin/clauderipple.js" --help > "$tmp/help.txt"
+          if grep -Eq '^[[:space:]]*remote([[:space:]]|$)' "$tmp/help.txt"; then
+            echo "::error::Remote command found in packaged CLI"
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: local-only-package-and-lock
