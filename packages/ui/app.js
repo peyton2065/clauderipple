@@ -484,7 +484,7 @@ async function savePriority(value, select) {
   }
 }
 function versionRow() {
-  return cell(`${t("health.version")} ${status.version}`, externalLink("https://github.com/peyton2065/clauderipple", "btn secondary", ["Fork updates"]), "Updates are installed manually from this fork.");
+  return cell(`${t("health.version")} ${status.version}`, el("a", { href: "https://github.com/peyton2065/clauderipple", target: "_blank", rel: "noreferrer", class: "btn secondary" }, ["Fork updates"]), "Updates are installed manually from this fork.");
 }
 
 // ---- Inside the app: the connection card, and pages while the router is down -------------
