@@ -57,3 +57,13 @@ test("dashboard does not offer upstream or automatic update controls", () => {
   const source = fs.readFileSync(new URL("../../ui/app.js", import.meta.url), "utf8");
   assert.doesNotMatch(source, /toggleAutoUpdate|\/api\/update/);
 });
+
+test("dashboard version row renders its fork update link", () => {
+  const source = fs.readFileSync(new URL("../../ui/app.js", import.meta.url), "utf8");
+  const start = source.indexOf("function versionRow() {");
+  const end = source.indexOf("// ---- Inside the app:", start);
+  assert.ok(start >= 0 && end > start);
+  const render = new Function("cell", "el", "t", "status", `${source.slice(start, end)}; return versionRow();`);
+  const row = render((...args: unknown[]) => args, (tag: string, attrs: unknown, children: unknown) => ({ tag, attrs, children }), (key: string) => key, { version: "test" }) as unknown[];
+  assert.equal((row[1] as { tag: string }).tag, "a");
+});
