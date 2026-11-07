@@ -67,3 +67,8 @@ test("dashboard version row renders its fork update link", () => {
   const row = render((...args: unknown[]) => args, (tag: string, attrs: unknown, children: unknown) => ({ tag, attrs, children }), (key: string) => key, { version: "test" }) as unknown[];
   assert.equal((row[1] as { tag: string }).tag, "a");
 });
+
+test("status mod has no phone control integration", () => {
+  const source = fs.readFileSync(new URL("../../mod/hooks/register.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /pollPhoneInbox|phoneQueueOf|\/api\/phone-inbox|\/api\/settings-jobs/);
+});
