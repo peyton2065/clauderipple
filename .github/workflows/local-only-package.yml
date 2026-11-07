@@ -39,11 +39,6 @@ jobs:
           for file in package/bin/clauderipple.js package/dist/cli/src/index.js package/dist/router/src/index.js package/dist/ui/index.html; do
             grep -Fx "$file" package-contents.txt >/dev/null
           done
-      - name: Record generated lockfile for branch commit
-        run: |
-          printf 'LOCKFILE_BASE64='
-          base64 -w0 package-lock.json
-          printf '\n'
       - uses: actions/upload-artifact@v4
         with:
           name: local-only-package-and-lock
