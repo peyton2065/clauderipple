@@ -52,3 +52,8 @@ test("OAuth callbacks bind only IPv4 loopback", () => {
 test("automatic updates are disabled by default in the local-only fork", () => {
   assert.equal(DEFAULTS.autoUpdate, false);
 });
+
+test("dashboard does not offer upstream or automatic update controls", () => {
+  const source = fs.readFileSync(new URL("../../ui/app.js", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /toggleAutoUpdate|\/api\/update/);
+});
