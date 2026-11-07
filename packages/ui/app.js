@@ -358,14 +358,8 @@ async function refreshHealth() {
   if (clientsLoaded) renderClients();
   if (modState.settings) renderModNotice();
   const details = $("#health-details");
-  // A start this page recorded is over once the router says so — a failure included — so the button
-  // is not left saying "running" with no way back (G-D07).
-  if (updateState.check && updateState.check.running && status.autoUpdate && status.autoUpdate.running === false) {
-    updateState.check = { ...updateState.check, running: false };
-  }
   modRedraw(details, [
     versionRow(),
-    autoUpdateRow(),
     priorityRow(),
     // Which files answer, and since when: the only way to see that an update actually replaced the router.
     ...(status.runtime ? [cell(t("health.runtime"), null, [el("span", { class: "cell-sub mono", text: status.runtime.router || "?" }), new Date(status.runtime.startedAt).toLocaleString()])] : []),
@@ -450,36 +444,6 @@ if (diagnosticsCopy) diagnosticsCopy.addEventListener("click", () => void copyDi
 // The update check runs on a click, not with the 5-second refresh: it asks the npm registry. What an
 // update means depends on how this copy was installed, so the router's CLI decides and runs it; the
 // router restarts on the new version and the served-files check above reloads this page.
-let updateState = { busy: false, check: null };
-let autoUpdateSaving = false;
-function autoUpdateRow() {
-  const control = modSwitch("auto-update", status.autoUpdate?.enabled !== false, t("update.auto"), toggleAutoUpdate);
-  control.querySelector("input").disabled = autoUpdateSaving || !status.autoUpdate;
-  return cell(t("update.auto"), control, t("update.autoHelp"));
-}
-async function toggleAutoUpdate(enabled) {
-  if (autoUpdateSaving) return;
-  autoUpdateSaving = true;
-  const input = document.querySelector('[data-key="auto-update"]');
-  if (input) input.disabled = true;
-  try {
-    // Do not use latestConfig's stale fallback for an automatic-install preference.
-    const next = await api("/api/config");
-    next.autoUpdate = enabled;
-    const out = await configRequest(next);
-    currentConfig = next;
-    if (status.autoUpdate) status.autoUpdate.enabled = enabled;
-    configSaved(out, t("common.saved"));
-  } catch (error) {
-    toast(t("common.saveFailed"), true, error.message);
-  } finally {
-    autoUpdateSaving = false;
-    await refreshHealth();
-    const current = document.querySelector('[data-key="auto-update"]');
-    if (current) { current.disabled = !status.autoUpdate; current.checked = status.autoUpdate?.enabled !== false; }
-  }
-}
-
 // How much CPU priority the router asks Windows for (config processPriority,
 // Normal unless set). Task Scheduler had started them below Normal, and a build holding every core
 // starved the router until an update could not reach it (2026-10-29). High puts ClaudeRipple ahead
@@ -520,57 +484,7 @@ async function savePriority(value, select) {
   }
 }
 function versionRow() {
-  const check = updateState.check;
-  // The version reads as the row's label; what the update check found sits under it, the action on the right.
-  let note = null;
-  let button = null;
-  if (check && check.newer && check.kind === "checkout") {
-    note = t("update.checkout", { latest: check.latest });
-  } else {
-    const action = check && check.newer;
-    const label = updateState.busy ? t("update.checking")
-      : check && check.running ? t("update.running")
-      : action ? (check.kind === "packaged" ? t("update.download", { latest: check.latest }) : t("update.install", { latest: check.latest }))
-      : t("update.check");
-    button = el("button", { class: action ? "btn" : "btn secondary", type: "button", text: label });
-    button.disabled = updateState.busy || Boolean(check && check.running);
-    button.addEventListener("click", () => void (action ? startUpdate() : checkForUpdate()));
-    if (check && !check.newer && !updateState.busy) note = t("update.latest");
-  }
-  // An install that ran and failed is not "the latest version": the reason stays in reach, and the
-  // button is the retry (G-D07). The router's own text is shown, as it is the only detail there is.
-  const failed = status.autoUpdate && status.autoUpdate.lastError && !status.autoUpdate.running && !updateState.busy;
-  if (failed && button) note = `${t("update.lastFailed")} ${shortError(status.autoUpdate.lastError)}`;
-  const row = cell(el("span", { class: "cell-label", text: `${t("health.version")} ${status.version}` }), button, note);
-  row.id = "health-version-row";
-  return row;
-}
-function renderVersionRow() {
-  const row = $("#health-version-row");
-  if (row) row.replaceWith(versionRow());
-}
-async function checkForUpdate() {
-  updateState = { busy: true, check: updateState.check };
-  renderVersionRow();
-  try { updateState = { busy: false, check: await api("/api/update") }; }
-  catch (error) { updateState = { busy: false, check: null }; toast(t("update.checkFailed"), true, error.message); }
-  renderVersionRow();
-}
-async function startUpdate() {
-  const check = updateState.check;
-  if (check.kind === "packaged") { window.open("https://github.com/PBJ-2/clauderipple/releases/latest", "_blank", "noreferrer"); return; }
-  if (!confirm(t("update.confirm", { latest: check.latest, current: check.current }))) return;
-  updateState = { busy: true, check };
-  renderVersionRow();
-  try {
-    await api("/api/update", { method: "POST" });
-    updateState = { busy: false, check: { ...check, running: true } };
-    toast(t("update.started"));
-  } catch (error) {
-    updateState = { busy: false, check };
-    toast(t("update.failed"), true, error.message);
-  }
-  renderVersionRow();
+  return cell(`${t("health.version")} ${status.version}`, externalLink("https://github.com/peyton2065/clauderipple", "btn secondary", ["Fork updates"]), "Updates are installed manually from this fork.");
 }
 
 // ---- Inside the app: the connection card, and pages while the router is down -------------
