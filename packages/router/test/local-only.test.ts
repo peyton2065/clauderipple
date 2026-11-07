@@ -84,6 +84,6 @@ test("proxy rejects an unsafe host before binding", async () => {
       listen: (_port: number, _host: string, ready: () => void) => { bound = true; ready(); },
     },
   };
-  await assert.rejects(() => Proxy.prototype.listen.call(fake as unknown as InstanceType<typeof Proxy>), /listen.host must be 127\\.0\\.0\\.1/);
+  await assert.rejects(() => Proxy.prototype.listen.call(fake as unknown as InstanceType<typeof Proxy>), /listen.host must be 127\.0\.0\.1/);
   assert.equal(bound, false);
 });
