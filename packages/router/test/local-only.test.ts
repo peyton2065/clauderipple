@@ -87,3 +87,9 @@ test("proxy rejects an unsafe host before binding", async () => {
   await assert.rejects(() => Proxy.prototype.listen.call(fake as unknown as InstanceType<typeof Proxy>), /listen.host must be 127\.0\.0\.1/);
   assert.equal(bound, false);
 });
+
+test("tray offers fork updates rather than the upstream release", () => {
+  const source = fs.readFileSync(new URL("../../app/src/main.ts", import.meta.url), "utf8");
+  assert.match(source, /label: "Fork updates".*shell\.openExternal\("https:\/\/github\.com\/peyton2065\/clauderipple"\)/);
+  assert.doesNotMatch(source, /https:\/\/github\.com\/PBJ-2\/clauderipple\/releases\/latest/);
+});
