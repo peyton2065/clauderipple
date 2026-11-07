@@ -1,3 +1,5 @@
+> **Local-only fork:** Some translated upstream instructions below are outdated. Follow the [English README](README.md) for installation, updates, and removed remote features.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="brand/mark-dark.svg">

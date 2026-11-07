@@ -9,7 +9,6 @@ import os from "node:os";
 import path from "node:path";
 import type { CompatibleCaps } from "./compat.ts";
 import { PRESETS } from "./presets.ts";
-import { hostProblem, portProblem } from "./remote-host.ts";
 import { ingressOnly } from "./targets.ts";
 
 export type ProcessPriority = "below-normal" | "normal" | "above-normal" | "high";
@@ -541,12 +540,6 @@ export type Config = {
    */
   picker?: { enabled: boolean; hosts?: string[] };
   /**
-   * Remote (SSH) hosts that run Claude Code for Claude Desktop sessions. The router holds a reverse
-   * tunnel to each (remote-tunnel.ts), so the remote's 127.0.0.1:<port> reaches this proxy. Written
-   * by `clauderipple remote add|remove`, which also sets up the remote side (remote-host.ts).
-   */
-  remote?: { hosts: { host: string; port: number }[] };
-  /**
    * Keep a MacBook awake with its lid closed (awake.ts). Off unless set. Needs the one-time
    * `clauderipple awake setup`, which installs a narrow sudoers rule for `pmset -a disablesleep`.
    */
@@ -635,6 +628,7 @@ export function terminateHosts(c: Config): string[] {
 }
 
 export const DEFAULTS: Config = {
+  autoUpdate: false,
   listen: { host: "127.0.0.1", port: 8790 },
   upstream: "api.anthropic.com",
   providers: {},
@@ -795,8 +789,11 @@ function foldSplitProviders(c: Config): Config {
   };
 }
 
+export const LOCAL_ONLY_LISTEN_HOST = "127.0.0.1";
+
 export function validate(c: Config): string[] {
   const errors: string[] = [];
+  if (c.listen.host !== LOCAL_ONLY_LISTEN_HOST) errors.push(`listen.host must be ${LOCAL_ONLY_LISTEN_HOST}`);
   if (c.autoUpdate !== undefined && typeof c.autoUpdate !== "boolean") errors.push("autoUpdate must be true or false");
   if (c.processPriority !== undefined && !PROCESS_PRIORITIES.includes(c.processPriority as ProcessPriority)) {
     errors.push('processPriority must be "below-normal", "normal", "above-normal" or "high"');
@@ -990,25 +987,7 @@ export function validate(c: Config): string[] {
   if (c.cli.agentFiles !== undefined && typeof c.cli.agentFiles !== "boolean") errors.push("cli.agentFiles must be true or false");
   if (c.cli.limitWorkerTools !== undefined && typeof c.cli.limitWorkerTools !== "boolean") errors.push("cli.limitWorkerTools must be true or false");
   if (c.listen.openaiPort !== undefined && !(c.listen.openaiPort >= 0 && c.listen.openaiPort < 65536)) errors.push("listen.openaiPort out of range");
-  if (c.remote !== undefined) {
-    const hosts = (c.remote as { hosts?: unknown } | null)?.hosts;
-    if (!Array.isArray(hosts)) errors.push("remote.hosts must be a list");
-    else {
-      const seen = new Set<string>();
-      hosts.forEach((entry, i) => {
-        const h = entry as { host?: unknown; port?: unknown } | null;
-        if (!h || typeof h !== "object") { errors.push(`remote.hosts ${i} must be an object`); return; }
-        // Handed to ssh as an argument: the same check `remote add` applies, so a hand edit cannot
-        // slip an option such as -oProxyCommand into the router's own ssh.
-        const hostError = hostProblem(h.host);
-        if (hostError) errors.push(`remote.hosts ${i}: ${hostError}`);
-        else if (seen.has(h.host as string)) errors.push(`remote.hosts ${i}: "${String(h.host)}" is listed twice`);
-        else seen.add(h.host as string);
-        const portError = portProblem(h.port);
-        if (portError) errors.push(`remote.hosts ${i}: ${portError}`);
-      });
-    }
-  }
+  if (Object.hasOwn(c, "remote")) errors.push("remote configuration is not supported in this local-only build");
   validatePower(c, errors);
   return errors;
 }
@@ -1047,10 +1026,13 @@ export class ConfigStore {
       // references it carries have to be the ones that get checked.
       const next = foldSplitProviders(merge(DEFAULTS, parsed));
       const errors = validate(next);
+      const fatal = errors.find(error => error === "listen.host must be 127.0.0.1" || error === "remote configuration is not supported in this local-only build");
+      if (initial && fatal) throw new Error(fatal);
       if (errors.length === 0 || initial) this.current = next;
       this.mtimeMs = st.mtimeMs;
       this.onChange?.(this.current, errors);
     } catch (e) {
+      if (initial && ["listen.host must be 127.0.0.1", "remote configuration is not supported in this local-only build"].includes((e as Error).message)) throw e;
       this.mtimeMs = st.mtimeMs; // do not re-parse a broken file on every request
       this.onChange?.(this.current, [`config parse error: ${(e as Error).message}`]);
     }

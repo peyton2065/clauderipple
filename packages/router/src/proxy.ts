@@ -20,7 +20,7 @@ import net from "node:net";
 import tls from "node:tls";
 import zlib from "node:zlib";
 import type { Duplex } from "node:stream";
-import type { Config, ProviderModel } from "./config.ts";
+import { LOCAL_ONLY_LISTEN_HOST, type Config, type ProviderModel } from "./config.ts";
 import type { Logger } from "./log.ts";
 import { exhaustionHeaders, ModelHealth, modelDeprecation, ProviderHealth, providerExhaustion, UpstreamHealth } from "./health.ts";
 import type { HoldGate } from "./hold.ts";
@@ -594,6 +594,7 @@ export class Proxy {
 
   listen(): Promise<void> {
     const { host, port } = this.deps.config().listen;
+    if (host !== LOCAL_ONLY_LISTEN_HOST) return Promise.reject(new Error(`listen.host must be ${LOCAL_ONLY_LISTEN_HOST}`));
     return new Promise((resolveP, reject) => {
       this.server.once("error", reject);
       this.server.listen(port, host, () => {

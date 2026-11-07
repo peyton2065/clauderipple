@@ -30,8 +30,6 @@ import { OpenAiIngress } from "./ingress/server.ts";
 import { ObservedClaudeCodeAuth } from "./providers/anthropic-observed.ts";
 import { VERSION } from "./version.ts";
 import { allowLongSilences } from "./providers/retry.ts";
-import { assetsFingerprint, readLocalAssets, spawnSsh, syncRemoteAssets } from "./remote-host.ts";
-import { RemoteTunnels, proxyConnectHost } from "./remote-tunnel.ts";
 import { syncContextWindows } from "./context-windows.ts";
 import { applyProcessPriority } from "./process-priority.ts";
 
@@ -47,8 +45,6 @@ const home = homeDir();
 const logFile = process.env.CLAUDERIPPLE_NO_LOGFILE ? null : path.join(home, "logs", "router.log");
 
 let log: Logger | null = null;
-// Created after listen(); the config callback below runs before that and finds it null.
-let tunnels: RemoteTunnels | null = null;
 /** The last config read's validation errors: the status and readiness report them (G-D14). */
 let configErrors: string[] = [];
 let reconcileProxyConfig: ((config: ReturnType<ConfigStore["get"]>) => void) | undefined;
@@ -75,9 +71,6 @@ const store = new ConfigStore(undefined, (c, errors) => {
   }
   try { syncContextWindows(c); }
   catch (e) { (log ?? console).warn(`compact windows: ${(e as Error).message}`); }
-  // Remote hosts get the regenerated agent files too, and a hand edit of `remote.hosts` takes effect.
-  tunnels?.reconcile(c.remote?.hosts ?? []);
-  tunnels?.assetsChanged();
 });
 const cfg0 = store.get();
 log = new Logger(logFile, cfg0.log.maxBytes, cfg0.log.keep, !!process.env.CLAUDERIPPLE_ECHO || !logFile);
@@ -208,10 +201,6 @@ function beginDrain(reason: string): void {
 }
 
 for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => beginDrain(sig));
-// Tunnels go with the process, not with the start of a drain: a remote session's in-flight model
-// call travels through one, and the drain exists to let it finish. Every exit path ends here
-// (drain, the health self-exit, a fatal startup error); a SIGKILL is covered by the pid record.
-process.on("exit", () => tunnels?.stopAll());
 
 const statsEvery = 5 * 60 * 1000;
 setInterval(() => {
@@ -234,23 +223,6 @@ proxy
     );
     const ingressPort = await ingress.listen();
     log!.info(`clauderipple OpenAI ingress listening on 127.0.0.1:${ingressPort}`);
-    // Reverse tunnels to remote (SSH) hosts, after listen() so their far end has something to reach.
-    const assets = () => readLocalAssets({ home, agentDir: defaultAgentDir() });
-    tunnels = new RemoteTunnels({
-      log: log!,
-      proxyTarget: () => ({ host: proxyConnectHost(store.get().listen.host), port: store.get().listen.port }),
-      pidFile: path.join(home, "remote-tunnels.json"),
-      sync: (host) => syncRemoteAssets(spawnSsh, host, assets()),
-      fingerprint: () => {
-        try {
-          return assetsFingerprint(assets());
-        } catch {
-          return "";
-        }
-      },
-    });
-    tunnels.cleanupStale();
-    tunnels.reconcile(c.remote?.hosts ?? []);
     // Quota only arrives on GPT response headers, so a quiet day left the status 11 hours stale
     // (2026-09-20). Ask once now, after listen(), and never wait for the answer.
     proxy.chatgptRefreshAll();
@@ -323,13 +295,6 @@ proxy
       image: (req, signal, meta) => proxy.generateImage(req, signal, meta),
       modelCatalog: () => loadModelCatalog(),
       shutdown: () => beginDrain("shutdown requested"),
-      remote: {
-        status: () => tunnels!.status(),
-        reload: () => {
-          tunnels!.reconcile(store.get().remote?.hosts ?? []);
-          return tunnels!.status();
-        },
-      },
       power: {
         status: () => ({ platform: powerPlatform(process.platform), awake: awake.status(), tether: tether.status() }),
         pin: (on) => tether.setPin(on),

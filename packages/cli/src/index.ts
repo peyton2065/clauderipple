@@ -9,8 +9,6 @@
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
 import { ConfigStore, DEFAULTS, homeDir, configPath } from "../../router/src/config.ts";
 import { adminPort } from "../../router/src/admin.ts";
 import { CLI_WINDOW_MAX } from "../../router/src/bootstrap.ts";
@@ -31,10 +29,9 @@ import { ingressModels } from "../../router/src/ingress/models.ts";
 import { GROK_DEFAULT_URL } from "../../router/src/providers/grok/catalog.ts";
 import { claudeLogin, claudeLogout, desktopClaudeCodeDirs } from "./claude-auth.ts";
 import { openBrowser } from "./browser.ts";
-import { electronPath, installTrayRuntime, startTray } from "./tray.ts";
-import { dropPowerShellShim, installKind, isNewer, latestVersion, PACKAGE, runUpdate } from "./update.ts";
+import { installTrayRuntime, startTray } from "./tray.ts";
+import { dropPowerShellShim, installKind } from "./update.ts";
 import { ClaudeOAuthSession } from "../../router/src/providers/claude-oauth.ts";
-import { requestHostUpdate } from "../../remote/src/host-update.ts";
 import { purgeHome } from "./purge.ts";
 
 async function pickerOn(): Promise<void> {
@@ -116,7 +113,6 @@ function pickerOff(): void {
 import { VERSION } from "../../router/src/version.ts";
 import { probe } from "./probe.ts";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
 const installedRuntime = runtime();
 const routerScript = installedRuntime.router;
 
@@ -260,8 +256,6 @@ async function install(): Promise<void> {
   // launchd starts the agent the moment it is bootstrapped (RunAtLoad); a scheduled task waits for
   // its logon trigger, so the router would only appear after the next sign-in. Start it either way,
   // and believe it only once the router's process exists (supervisor.startRouter).
-  // Durable before the successor router starts: its own completion does not imply host application.
-  requestHostUpdate(home, VERSION);
   const started = startAgent({ onProgress: (m) => console.log(`  ${m}`) });
   console.log(
     started === "failed" ? `✗ could not start the router (${supervisorName()})`
@@ -309,13 +303,6 @@ async function install(): Promise<void> {
   } catch (e) {
     console.log(`  menu-bar app launcher not written: ${(e as Error).message}`);
   }
-  // The phone host has the same problem as the router above: new files, old process. The host
-  // decides whether it is ours and idle (remote host-service refreshPlan). Never fatal.
-  try {
-    execFileSync(installedRuntime.node, [installedRuntime.cli, "remote", "refresh"], { env: { ...process.env, ...installedRuntime.env }, stdio: "inherit" });
-  } catch {
-    console.log("  호스트 적용 대기: 진행 중인 작업을 유지하며 자동으로 다시 시도합니다.");
-  }
   console.log(direct ? "\nDone. Claude stays on its default connection (direct on); run \"clauderipple direct off\" to go through ClaudeRipple." : "\nDone. New Claude Desktop Code sessions go through ClaudeRipple. Existing sessions pick up settings.json env changes on their next request.");
 }
 
@@ -331,18 +318,6 @@ async function uninstall(): Promise<void> {
   // marker remains usable by removeClientIntegrations after the service has been unregistered.
   if (desktop.ours && desktop.installationHome === undefined && desktop.egressProxyUrl === proxyUrlFor(cfg.listen.port)) {
     if (!migrateLegacyAppProxy(proxyUrlFor(cfg.listen.port), home)) throw new Error("Claude Desktop 프록시의 설치 소유권을 확인하지 못해 제거를 중단했습니다. 서비스를 복구한 뒤 다시 시도해 주세요.");
-  }
-  // The phone host is its own account-wide service and is not inside the router's definition: stop
-  // and remove it first, so nothing keeps running against files this uninstall removes. Its own
-  // definition decides ownership, so another installation's host is reported, not touched (D1).
-  let hostRemoved = true;
-  try {
-    const { uninstallService } = await import("../../remote/src/host-service.ts");
-    for (const line of await uninstallService({ installationHome: home })) console.log(`  ${line}`);
-  } catch (e) {
-    hostRemoved = false;
-    process.exitCode = 1;
-    console.log(`! the phone host service was not removed: ${(e as Error).message}`);
   }
   // Stop the router before unregistering it. On macOS unloading the agent takes the process with
   // it; on Windows removing the task leaves it running, and a running router holds router.log open,
@@ -408,9 +383,9 @@ async function uninstall(): Promise<void> {
   const edit = removeProxyEnv({ proxyUrl: proxyUrlFor(cfg.listen.port), caPath: certPaths(home).caPem, ...(cfg.cli.models ? { models: cfg.cli.models } : {}), home });
   console.log(edit.changed ? `✓ ${settingsPath()} restored (backup: ${edit.backup ?? "none"})` : `✓ ${settingsPath()} had no ClaudeRipple keys`);
   for (const n of edit.notes) console.log(`  note: ${n}`);
-  await reportLeftovers(home);
+  await reportLeftovers();
   if (flag("purge")) {
-    if (!integrationsRemoved || !launcherRemoved || !hostRemoved || edit.notes.some(note => /left |could not /i.test(note)) || (removed !== "removed" && removed !== "absent")) {
+    if (!integrationsRemoved || !launcherRemoved || edit.notes.some(note => /left |could not /i.test(note)) || (removed !== "removed" && removed !== "absent")) {
       process.exitCode = 1;
       console.error("일부 등록을 제거하지 못해 설치 폴더를 보존했습니다. 오류를 해결한 뒤 다시 제거해 주세요.");
       return;
@@ -424,22 +399,11 @@ async function uninstall(): Promise<void> {
   } else console.log(`  kept ${home} (config, certs, logs). Add --purge to delete it.`);
 }
 
-/**
- * What an uninstall leaves outside the installation home, said before that home (and with it the
- * record of the remote hosts) goes. None of it is removed here: the sudoers grant needs an
- * administrator's approval and the PATH line still serves the command that was just run, so each is
- * named with the command that removes it when the user no longer wants it (G-D02, G-D16).
- */
-async function reportLeftovers(home: string): Promise<void> {
+/** Report manual cleanup outside the installation home. */
+async function reportLeftovers(): Promise<void> {
   const { remainingAwakeGrantHint } = await import("./awake-setup.ts");
   const hint = remainingAwakeGrantHint();
   if (hint) console.log(`  ${hint}`);
-  const { configuredHosts } = await import("./remote.ts");
-  const hosts = configuredHosts(configPath()).map((host) => host.host).filter(Boolean);
-  if (hosts.length > 0) {
-    console.log(`  원격(SSH) 호스트 ${hosts.length}대의 설정이 남아 있습니다: ${hosts.join(", ")}`);
-    console.log("  더 이상 필요하지 않다면 각 호스트에서 `clauderipple remote remove <호스트>`를 실행해 주세요.");
-  }
   console.log("  설치 명령이 셸 프로필에 추가한 PATH 설정 줄은 그대로 두었습니다. ClaudeRipple을 완전히 제거할 때는 해당 줄(주석 `# ClaudeRipple`)을 삭제해 주세요.");
 }
 
@@ -542,52 +506,16 @@ function logs(): void {
   });
 }
 
-/**
- * `update --check [--json]` reports; `update` installs the latest version the way this copy was
- * installed (update.ts) and fetches the tray's Electron again if the old copy had it.
- */
+/** No upstream package can replace this local-only fork through the CLI or the dashboard. */
 async function update(): Promise<void> {
   const kind = installKind(installedRuntime);
-  // CLAUDERIPPLE_PACKAGE names what to install instead of the registry's latest (a tarball, say).
-  const override = process.env.CLAUDERIPPLE_PACKAGE;
-  const latest = override ? null : await latestVersion();
-  const newer = latest ? isNewer(latest, VERSION) : true;
   if (flag("check")) {
-    if (flag("json")) console.log(JSON.stringify({ current: VERSION, latest, newer, kind: kind.kind }));
-    else console.log(newer ? `ClaudeRipple ${latest} is available (this is ${VERSION}). Update with: clauderipple update` : `ClaudeRipple ${VERSION} is the latest version`);
+    if (flag("json")) console.log(JSON.stringify({ current: VERSION, latest: null, newer: false, kind: kind.kind }));
+    else console.log("Automatic updates are disabled in this local-only fork. Install new versions from https://github.com/peyton2065/clauderipple.");
     return;
   }
-  if (kind.kind !== "script" && kind.kind !== "npm") {
-    process.exitCode = 1;
-    console.log(
-      kind.kind === "packaged" ? "This is the standalone app. Download the new version from https://github.com/PBJ-2/clauderipple/releases"
-      : kind.kind === "checkout" ? "This is a source checkout. Update it with git pull."
-      : `ClaudeRipple is installed at ${kind.root}, which is not a global npm install. Update it the way you installed it.`,
-    );
-    return;
-  }
-  if (!newer && !flag("force")) {
-    console.log(`✓ ClaudeRipple ${VERSION} is the latest version`);
-    return;
-  }
-  const hadTray = electronPath() !== null;
-  const spec = override ?? `${PACKAGE}@${latest}`;
-  console.log(`Updating ClaudeRipple ${VERSION} → ${latest ?? spec} (${kind.kind === "script" ? "install script" : "npm"}, ${kind.prefix})…`);
-  const result = runUpdate(kind, installedRuntime, spec);
-  if (result.ok && hadTray) {
-    // The new files decide where Electron lives; ask them, not this process's copy. --refresh also
-    // replaces a runtime the previous version fetched, which an install alone would keep (B15).
-    execFileSync(installedRuntime.node, [installedRuntime.cli, "tray", "--install", "--refresh"], { env: { ...process.env, ...installedRuntime.env }, stdio: "inherit" });
-  }
-  console.log(result.message);
-  if (!result.ok) process.exitCode = 1;
+  throw new Error("This local-only fork does not install upstream updates. Install a reviewed version from https://github.com/peyton2065/clauderipple.");
 }
-
-// ---- Recovery: doctor, repair, direct, app ------------------------------------------------
-//
-// The menu-bar app calls these when the router is down and the dashboard with it. With --json each
-// prints one JSON object on stdout and exits 0 whatever the diagnosis; a non-zero exit means the
-// command itself could not run.
 
 /** This machine's supervisor, registering this installation's runtime and files. */
 function recoveryDeps(): RecoveryDeps {
@@ -701,16 +629,10 @@ function help(): void {
                     a double-clickable launcher for the menu-bar app (~/Applications, Start Menu, app menu)
   start | stop | restart
   logs [-n N] [-f]
-  remote [install|uninstall|status|pair]  run or manage the phone host (macOS, Windows, Linux systemd)
-  remote add <ssh-host> [--port N] [--force]
-                    route Claude Desktop sessions that run on a remote (SSH) host through ClaudeRipple:
-                    sets up the host over your key-based ssh and keeps a reverse tunnel open (remote port, default 18791)
-  remote remove <ssh-host>   undo "remote add" on that host and stop its tunnel
-  remote hosts      list remote (SSH) hosts and their tunnels (also shown by "remote status")
   config            print the config file path
   ui                open the dashboard in your browser
   tray [--install]  start the menu-bar / tray app (--install fetches Electron, ~270MB, once)
-  update [--check]  install the latest version the way this one was installed (--check only reports)
+  update [--check]  report the fork update policy; install reviewed versions manually from the fork
   login             add a ChatGPT account (opens your browser; run again to add another — they take turns when one runs out)
   logout            forget every ChatGPT account added with "login" (the Codex CLI's own login is left alone)
   claude-login      connect a Claude subscription in the browser (--setup-token: via \`claude setup-token\`; --manual: paste the code)
@@ -738,38 +660,8 @@ Home directory: ${homeDir()}  (override with CLAUDERIPPLE_HOME)`);
 
 async function dispatchCommand(): Promise<void> {
   switch (cmd) {
-    case "remote": {
-      const sub = args[1];
-      // Remote (SSH) hosts for Claude Desktop sessions; every other `remote` verb is the phone host's.
-      if (sub === "add" || sub === "remove" || sub === "hosts") {
-        const { remoteAdd, remoteRemove, remoteHosts, REMOTE_SSH_USAGE } = await import("./remote.ts");
-        const host = args[2];
-        if (sub === "hosts") await remoteHosts();
-        else if (!host || host.startsWith("--")) throw new Error(REMOTE_SSH_USAGE);
-        else if (sub === "add") {
-          const port = opt("port");
-          await remoteAdd(host, { ...(port !== undefined ? { port: Number(port) } : {}), force: flag("force") });
-        } else await remoteRemove(host);
-        break;
-      }
-      const script = path.resolve(here, "../../remote/src/main" + path.extname(fileURLToPath(import.meta.url)));
-      const { spawn } = await import("node:child_process");
-      const child = spawn(installedRuntime.node, [script, ...args.slice(1)], { stdio: "inherit", env: { ...process.env, ...installedRuntime.env } });
-      for (const signal of ["SIGTERM", "SIGINT"] as const) process.on(signal, () => child.kill(signal));
-      process.exitCode = await new Promise<number>((resolve, reject) => {
-        child.once("error", reject);
-        child.once("exit", code => resolve(code ?? 1));
-      });
-      if (sub === "status") {
-        // Only when there are any, so the phone host's status reads exactly as before otherwise.
-        const { configuredHosts, remoteHosts } = await import("./remote.ts");
-        if (configuredHosts(configPath()).length > 0) {
-          console.log("\nremote (SSH) hosts:");
-          await remoteHosts();
-        }
-      }
-      break;
-    }
+    case "remote":
+      throw new Error("remote commands are not available in this local-only build");
     case "install":
       await install();
       break;

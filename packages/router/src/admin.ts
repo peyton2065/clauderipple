@@ -20,9 +20,6 @@
 //   GET  /*           static files from packages/ui (the GUI itself)
 
 import crypto from "node:crypto";
-import { phoneRequest } from "./phone.ts";
-import { settingsId, validSettingsJobAction } from "../../remote/src/settings-jobs.ts";
-import type { PhoneDeps } from "./phone.ts";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -83,7 +80,6 @@ import { GoogleOAuthSession, type GoogleOAuthState } from "./providers/google/lo
 import { GROK_AUTH_HINT, grokAuthPath, grokHome, readGrokToken, sharedGrokAuth } from "./providers/grok/auth.ts";
 import { GROK_DEFAULT_URL, GROK_FALLBACK_MODELS, grokModelsFromListing } from "./providers/grok/catalog.ts";
 import { GROK_WARNING, grokHeaders } from "./providers/grok/index.ts";
-import type { TunnelStatus } from "./remote-tunnel.ts";
 import { parsePowerChange, persistPowerChange, type PowerApi } from "./power.ts";
 import { processPriorityState, type ProcessPriorityState } from "./process-priority.ts";
 
@@ -108,7 +104,6 @@ const MIME: Record<string, string> = {
 
 export type AdminDeps = {
   /** External boundaries for the host-local control bridge; no production side effects in tests. */
-  phone?: PhoneDeps;
   config: () => Config;
   configFile: string;
   /**
@@ -223,11 +218,6 @@ export type AdminDeps = {
   opencodeUsage?: (name: string, credentialId?: string) => Promise<OpenCodeWindow[]>;
   /** A Grok provider's usage pool, for the status bar's limits row (`/api/limits`). Absent in tests. */
   grokUsage?: (name: string) => Promise<GrokWindow[]>;
-  /**
-   * Reverse SSH tunnels to remote hosts (remote-tunnel.ts): `GET /api/remote` reports them,
-   * `POST /api/remote/reload` re-reads `remote.hosts` from the config (after `remote add|remove`).
-   */
-  remote?: { status: () => TunnelStatus[]; reload: () => TunnelStatus[] };
   /** Lid-closed awake and hotspot failover (`GET|PUT /api/power`). Absent: 501. */
   power?: PowerApi;
 };
@@ -1931,73 +1921,6 @@ export function startAdmin(deps: AdminDeps): Promise<{ port: number; close(): vo
         sendJson(res, 403, { error: "cross-site request refused" });
         return;
       }
-      if (pathname === "/api/settings-jobs" || pathname === "/api/settings-jobs/claim" || pathname === "/api/settings-jobs/result") {
-        res.setHeader("cache-control", "no-store");
-        if (crossSiteOrigin(req) || req.headers["sec-fetch-site"] === "cross-site") { sendJson(res, 403, { error: "same-origin phone control required" }); return; }
-        const isList = pathname === "/api/settings-jobs";
-        if (method !== (isList ? "GET" : "POST")) { sendJson(res, 404, { error: "unknown phone endpoint or method" }); return; }
-        let body: string | undefined, exclude: string | undefined;
-        if (isList) {
-          const query = new URL(url, "http://127.0.0.1").searchParams;
-          exclude = query.get("exclude") ?? undefined;
-          if (!settingsId(exclude) || query.getAll("exclude").length !== 1) { sendJson(res, 400, { error: "invalid helper" }); return; }
-        } else {
-          try { body = (await readBody(req, 4096, new Error("settings job body too large"))).toString("utf8"); }
-          catch { sendJson(res, 400, { error: "invalid settings job request" }); return; }
-          let raw: unknown;
-          try { raw = JSON.parse(body); } catch { sendJson(res, 400, { error: "invalid settings job request" }); return; }
-          if (!validSettingsJobAction(raw, pathname.endsWith("/result"))) { sendJson(res, 400, { error: "invalid settings job request" }); return; }
-        }
-        const route = isList ? "settings-jobs" : `settings-jobs/${pathname.endsWith("/claim") ? "claim" : "result"}`;
-        const result = await phoneRequest(route, method, body, deps.phone, exclude);
-        sendJson(res, result.status, result.body); return;
-      }
-      if (pathname === "/api/phone-inbox" || pathname === "/api/phone-inbox/claim" || pathname === "/api/phone-inbox/result") {
-        res.setHeader("cache-control", "no-store");
-        if (crossSiteOrigin(req) || req.headers["sec-fetch-site"] === "cross-site") {
-          sendJson(res, 403, { error: "same-origin phone control required" }); return;
-        }
-        const isList = pathname === "/api/phone-inbox";
-        if (method !== (isList ? "GET" : "POST")) { sendJson(res, 404, { error: "unknown phone endpoint or method" }); return; }
-        let body: string | undefined;
-        let session: string | undefined;
-        if (isList) {
-          const query = new URL(url, "http://127.0.0.1").searchParams;
-          session = query.get("session") ?? undefined;
-          if (!session || session.length > 200 || query.getAll("session").length !== 1) { sendJson(res, 400, { error: "invalid session" }); return; }
-        } else {
-          try { body = (await readBody(req, 4096, new Error("inbox body too large"))).toString("utf8"); }
-          catch { sendJson(res, 400, { error: "invalid inbox request" }); return; }
-          let raw: unknown;
-          try { raw = JSON.parse(body); } catch { sendJson(res, 400, { error: "invalid inbox request" }); return; }
-          if (!raw || typeof raw !== "object" || Array.isArray(raw)) { sendJson(res, 400, { error: "invalid inbox request" }); return; }
-          const value = raw as Record<string, unknown>;
-          const result = pathname.endsWith("/result");
-          if (typeof value.itemId !== "string" || !/^[\w-]{1,100}$/.test(value.itemId) || Object.keys(value).some(key => key !== "itemId" && (!result || key !== "outcome")) || result && value.outcome !== "submitted" && value.outcome !== "failed") {
-            sendJson(res, 400, { error: "invalid inbox request" }); return;
-          }
-        }
-        const route = isList ? "inbox" : `inbox/${pathname.endsWith("/claim") ? "claim" : "result"}`;
-        const result = await phoneRequest(route, method, body, deps.phone, session);
-        sendJson(res, result.status, result.body);
-        return;
-      }
-      if (pathname.startsWith("/api/phone/")) {
-        res.setHeader("cache-control", "no-store");
-        // Pairing is a credential read: guard cross-site GETs too. Host is checked above.
-        if (crossSiteOrigin(req) || req.headers["sec-fetch-site"] === "cross-site") {
-          sendJson(res, 403, { error: "same-origin phone control required" });
-          return;
-        }
-        let body: string | undefined;
-        if (method === "POST" && pathname === "/api/phone/settings") {
-          try { body = (await readBody(req, 4096, new Error("phone settings too large"))).toString("utf8"); }
-          catch { sendJson(res, 413, { error: "phone settings too large" }); return; }
-        }
-        const result = await phoneRequest(pathname.slice("/api/phone/".length), method, body, deps.phone);
-        sendJson(res, result.status, result.body);
-        return;
-      }
       if (pathname === "/api/shutdown" && method === "POST") {
         if (!deps.shutdown) {
           sendJson(res, 501, { error: "shutdown not available" });
@@ -2017,16 +1940,6 @@ export function startAdmin(deps: AdminDeps): Promise<{ port: number; close(): vo
         // drain can outlive the connection (it waits for in-flight model calls, up to 90s).
         sendJson(res, 202, { draining: true });
         deps.shutdown();
-        return;
-      }
-      if (pathname === "/api/remote" && method === "GET") {
-        if (!deps.remote) { sendJson(res, 501, { error: "remote tunnels not available" }); return; }
-        sendJson(res, 200, { hosts: deps.remote.status() });
-        return;
-      }
-      if (pathname === "/api/remote/reload" && method === "POST") {
-        if (!deps.remote) { sendJson(res, 501, { error: "remote tunnels not available" }); return; }
-        sendJson(res, 200, { hosts: deps.remote.reload() });
         return;
       }
       if (pathname === "/api/power" && (method === "GET" || method === "PUT")) {

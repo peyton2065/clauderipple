@@ -1,3 +1,5 @@
+> **Local-only fork:** Some translated upstream instructions below are outdated. Follow the [English README](README.md) for installation, updates, and removed remote features.
+
 <h1 align="center">ClaudeRipple</h1>
 
 <p align="center"><a href="README.md">English</a> · <a href="README.ko.md">한국어</a> · <b>简体中文</b> · <a href="README.ja.md">日本語</a> · <a href="README.es.md">Español</a> · <a href="README.pt-BR.md">Português (BR)</a></p>

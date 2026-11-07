@@ -1,3 +1,10 @@
+# Local-only fork changes
+
+- Removed Ripple Remote, phone pairing and control, relay and push paths, SSH remote-host setup, and reverse tunnels.
+- Router, dashboard, ingress, and OAuth callback listeners use IPv4 loopback. Provider requests remain outbound.
+- Automatic installation of upstream updates is disabled. Review and install updates from the fork manually.
+- An existing upstream phone host or SSH setup must be removed with the old version before migrating. Remove legacy remote configuration before starting this fork.
+
 # Changelog
 
 ## 0.12.25 — 2026-11-02
