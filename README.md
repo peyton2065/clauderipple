@@ -10,22 +10,17 @@
 
 <p align="center"><b>English</b> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.es.md">Español</a> · <a href="README.pt-BR.md">Português (BR)</a></p>
 
+> **Local-only fork:** This branch retains the local Claude Desktop Code-tab router and model picker. Its listeners bind to `127.0.0.1`; requests to configured model providers still leave the computer. Ripple Remote, pairing, relays, push services, SSH remote hosts, and reverse tunnels are removed. Automatic updates are disabled; install reviewed updates from this fork.
+
 <p align="center">
   <b>Chat stays Claude. Only Code becomes GPT.</b><br>
   Claude Desktop's own setting for other models switches the <b>whole app</b> — chat, phone Remote
-  Control and connectors go with it.<br>ClaudeRipple turns nothing off: you stay signed in to your
+  Control and connectors go with it.<br>This fork keeps you signed in to your
   Claude subscription while GPT, DeepSeek, Kimi, Grok<br>or 400+ other models answer in the
   <b>Code tab</b>. Claude inside the <b>Codex app</b> and <b>Codex CLI</b> too.
 </p>
 
 <p align="center">
-  <a href="https://apps.apple.com/us/app/id6823063731"><img height="40" alt="App Store" src="https://img.shields.io/badge/App%20Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white"></a>
-  <img height="40" alt="Google Play" src="https://img.shields.io/badge/Google%20Play-Coming%20soon-666666?style=for-the-badge&logo=googleplay&logoColor=white">
-  <a href="https://discord.gg/R8ZgGSNHjw"><img height="40" alt="Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white"></a>
-</p>
-
-<p align="center">
-  <a href="https://www.npmjs.com/package/clauderipple"><img alt="npm" src="https://img.shields.io/npm/v/clauderipple?label=npm"></a>
   <img alt="Alpha" src="https://img.shields.io/badge/status-alpha-orange">
   <a href="LICENSE"><img alt="GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue"></a>
   <img alt="macOS" src="https://img.shields.io/badge/macOS-arm64%20%7C%20x64-black">
@@ -333,109 +328,23 @@ you map go to your provider, everything else goes to Anthropic byte for byte.
   <img src="docs/media/mapping.png" width="880" alt="Model mapping: which model answers for each Claude name, with per-model reasoning effort">
 </p>
 
-## Ripple Remote: every model, from your phone, for hours
+## Install and update
 
-Start a job in the Claude desktop app, close the laptop, and keep going from the couch.
-**Ripple Remote** is the phone app for ClaudeRipple: the same sessions, whichever model
-runs them, on your phone, and it does not drop you after 30 minutes.
+Use the reviewed version in [this fork](https://github.com/peyton2065/clauderipple). The draft branch is under verification; install from `main` only after the local-only changes are merged. The commands below are source-based instructions and have not been executed by the authors of this fork.
 
-<p align="center">
-  <img src="docs/media/remote/store/en-1.png" width="260" alt="A remote that doesn't time out: a GPT session followed for 1h 47m">
-  <img src="docs/media/remote/store/en-2.png" width="260" alt="GPT, DeepSeek and Gemini in one model picker on the phone">
-  <img src="docs/media/remote/store/en-3.png" width="260" alt="Approve a DeepSeek session's request from the phone">
-</p>
+If upgrading an older upstream installation that has Ripple Remote or SSH hosts configured, remove those services and tunnels with the old version first. This fork cannot remove services installed by an earlier version. Remove the old `remote` key from its configuration before starting this fork.
 
-- **Hours, not minutes.** The connection holds as long as your computer is on. Watch a
-  two-hour refactor through to the end and approve it when it asks.
-- **Any model you route.** GPT, DeepSeek, Gemini or Claude: every session looks and works
-  the same. Switch the next turn's model and reasoning effort from your phone.
-- **Your Claude app sessions, as they are.** Sessions you started in the Code tab on your
-  Mac continue on the phone — the live timeline, tool calls, diffs, subagents and their
-  models, plan approvals and question cards, photos and files.
-- **Your Mac's status bar in your pocket.** The model that answered, the cache and your
-  usage limits, as the ClaudeRipple band shows them on the Mac.
-- **Pairs with the laptop features.** With [lid-closed awake and the phone
-  hotspot](#lid-closed-and-the-phone-hotspot), the laptop keeps working in a bag and stays
-  online when the Wi-Fi does not.
-- **Private by design.** Messages, attachments and notifications are end-to-end
-  encrypted; the relay and the push service cannot read them. No account, no ads, no
-  tracking, free.
-
-Install ClaudeRipple on your computer, open the dashboard's **Phone** view and scan the
-QR code once. iPhone: [App Store](https://apps.apple.com/us/app/id6823063731). Android: in a
-closed test on Google Play — ask on [Discord](https://discord.gg/R8ZgGSNHjw).
-Claude app sessions are supported on macOS; the app has a demo you can try without a
-computer.
-
-## Install
-
-**macOS**
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/PBJ-2/clauderipple/main/scripts/install.sh | sh
-```
-
-**Windows** (PowerShell)
+After the PR is merged, Windows PowerShell can select the fork explicitly before running its installer:
 
 ```powershell
-irm https://raw.githubusercontent.com/PBJ-2/clauderipple/main/scripts/install.ps1 | iex
+$env:CLAUDERIPPLE_PACKAGE = "github:peyton2065/clauderipple#main"
+irm https://raw.githubusercontent.com/peyton2065/clauderipple/main/scripts/install.ps1 | iex
+Remove-Item Env:CLAUDERIPPLE_PACKAGE
 ```
 
-**Linux** (a desktop session with systemd)
+The installer may install Node, create a local CA and configure Claude Desktop and Claude Code. Review its script before running it. Open the dashboard with `clauderipple ui` and configure the desired providers. Updates are manual: review the fork and rerun its installer with the fork package selected. The `clauderipple update` command does not install upstream packages.
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/PBJ-2/clauderipple/main/scripts/install.sh | sh
-```
-
-The router runs as a per-user systemd service: `systemctl --user status clauderipple`, and
-`journalctl --user -u clauderipple` for what it printed. Picker mode trusts the local CA in the
-NSS database Chromium reads (`~/.pki/nssdb`, your user only, no sudo), which takes `certutil`:
-run `sudo apt install libnss3-tools` (Fedora: `sudo dnf install nss-tools`) before `clauderipple picker on`.
-
-That is the whole prerequisite list. The script uses a Node 24+ you already have, and
-downloads the official build into `~/.clauderipple/runtime` when you have none,
-verifying it against the checksum nodejs.org publishes. Then it sets ClaudeRipple up:
-a local certificate, two lines in `~/.claude/settings.json`, and a background router
-that starts with your computer. No administrator rights, no password.
-
-With Node already installed you can skip the script:
-
-```sh
-npm install -g clauderipple
-clauderipple install
-```
-
-On Windows, PowerShell's default execution policy refuses the `clauderipple.ps1` npm adds, so
-run `clauderipple.cmd install` there (or use Command Prompt). `install` removes that file, and
-plain `clauderipple` works in PowerShell from then on. The install script never leaves one.
-
-Then open the dashboard and add a provider:
-
-```sh
-clauderipple ui
-```
-
-**Providers** → add ChatGPT or paste an API key → **Model mapping**.
-
-**The menu-bar / tray app** shows the router's state, opens the dashboard in a click, and
-keeps a repair screen that works while the router is down:
-
-```sh
-clauderipple tray
-```
-
-On macOS and Windows the install script adds it by default. It runs on Electron, about 270MB,
-fetched once; set `CLAUDERIPPLE_NO_TRAY=1` before the install command to skip it. On Linux, or
-after an npm-only install, `clauderipple tray --install` adds it. Everything else works without it.
-
-**Updating.** The tray offers a new version when there is one (**Check for Updates…**), or:
-
-```sh
-clauderipple update
-```
-
-It updates the way you installed — the install script again, or npm — and restarts the router
-on the new version. The tray's Electron is kept across updates.
+To uninstall the fork, run `clauderipple uninstall`; add `--purge` only to remove its retained configuration, certificates and logs. The uninstall reports any manual cleanup it cannot perform. To roll back to another version, uninstall this fork first, then install the reviewed version you intend to use. An upstream version may restore remote features.
 
 Optional, for real names in the Desktop picker: **Clients → Claude Desktop → Model
 picker → on**, then quit and reopen Claude Desktop. To trust the local certificate
@@ -545,41 +454,9 @@ same ChatGPT provider as the search backend in `config.json`:
 This is opt-in. With no `webSearch` setting, Claude Code's existing search path
 is unchanged.
 
-### Remote (SSH) sessions
-
-Claude Desktop's Code tab can run a session on a remote Linux host over SSH.
-Claude Code then runs **on that host**, where ClaudeRipple is not, so routed
-models are unknown there (`Agent type 'gpt-6-1-sol' not found`). Connect the
-host once from the machine ClaudeRipple runs on:
-
-```bash
-clauderipple remote add my-server            # an ssh alias or user@host; --port N (default 18791)
-clauderipple remote hosts                    # tunnel state per host (also in `remote status`)
-clauderipple remote remove my-server         # undo it
-```
-
-`remote add` needs key-based `ssh my-server` to work without a password prompt.
-It copies the router's CA certificate (the public certificate only) to
-`~/.clauderipple-remote/` on the host, points the host's
-`~/.claude/settings.json` at the tunnel (`HTTPS_PROXY=http://127.0.0.1:18791`,
-`NODE_EXTRA_CA_CERTS`; the original is kept as
-`settings.json.clauderipple-backup`; a different proxy already there is refused
-without `--force`), and copies the generated agent files. The router then keeps
-a reverse SSH tunnel open from the host's `127.0.0.1:18791` to itself, restarts
-it when it drops, and copies the agent files again whenever they change. The
-host needs only `sh` — no Node and no ClaudeRipple.
-
-While the tunnel is down, Claude Code on the host gets *connection refused*
-rather than going to Anthropic around the router. The remote session only exists
-while this machine's Claude Desktop is connected to it anyway. The tunnel
-listens on the host's loopback only, but on a shared host every user there can
-reach that port, and through it your router. The status mod and image
-generation are not available on remote hosts yet.
-
 ## Lid closed and the phone hotspot
 
-For sessions you drive from your phone (Remote Control, Ripple Remote): the laptop
-keeps working in a bag. Open the dashboard's **Laptop** view.
+The laptop settings control sleep and network failover. Open the dashboard's **Laptop** view.
 
 **Stay awake with the lid closed.** Three modes: *Off*; *While working* — awake while a
 model call runs and for 10 minutes after the last one; *Always* — until you turn it off
@@ -703,8 +580,7 @@ In daily use by the author, but young. Expect rough edges:
 
 ## Community
 
-Questions, bug reports and the Ripple Remote Android beta (a closed test on Google Play) are on Discord: [https://discord.gg/R8ZgGSNHjw](https://discord.gg/R8ZgGSNHjw). To join the Android beta, send the Gmail address you use on Google Play to @pbj_ripple as a direct message, not in a channel where everyone can read it.
-
+Questions and bug reports for this fork belong in its GitHub repository.
 ## Not affiliated
 
 ClaudeRipple is an independent open-source project. It is not affiliated with,
