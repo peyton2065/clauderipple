@@ -361,15 +361,15 @@ ClaudeRipple never sees a password, and no platform needs administrator rights.
 <summary>From source (Node 24)</summary>
 
 ```bash
-git clone https://github.com/PBJ-2/clauderipple && cd clauderipple && npm install
+git clone https://github.com/peyton2065/clauderipple && cd clauderipple && npm install
 node packages/cli/src/index.ts install   # certs, settings.json env, supervisor (launchd / Task Scheduler), end-to-end probe
 node packages/cli/src/index.ts ui        # open the local GUI in your browser
 ```
 
-`uninstall` reverses everything and restores `~/.claude/settings.json` from a backup.
+`uninstall` removes this fork's owned integrations and reports cleanup it cannot complete.
 Other commands: `status`, `start`, `stop`, `restart`, `logs -f`, `login`, `logout`,
 `claude-login`, `claude-logout`, `picker on|off`, `agent-title on|off`, `mod on|off`,
-`codex on|off`, `update`, `image "<prompt>"`.
+`codex on|off`, `update --check`, `image "<prompt>"`.
 </details>
 
 ## Clients
