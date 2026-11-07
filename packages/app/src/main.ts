@@ -1532,7 +1532,7 @@ async function checkUpdatesInteractive(): Promise<void> {
 async function offerUpdate(check: UpdateCheck): Promise<void> {
   if (check.kind === "packaged") {
     const choice = await dialog.showMessageBox({ message: L.updateAvailable(check.latest ?? "?", check.current), detail: L.updatePackaged, buttons: [L.updateNow, L.later], defaultId: 0, cancelId: 1 });
-    if (choice.response === 0) void shell.openExternal("https://github.com/PBJ-2/clauderipple/releases/latest");
+    if (choice.response === 0) void shell.openExternal("https://github.com/peyton2065/clauderipple");
     return;
   }
   if (check.kind === "checkout") {
@@ -1782,7 +1782,7 @@ function render(): void {
       : []),
     { label: L.connectClaudeSubscription, click: async () => void dialog.showMessageBox({ message: await runCli(["claude-login"]) }) },
     { type: "separator" },
-    { label: L.checkUpdates, enabled: !updating, click: () => void checkUpdatesInteractive() },
+    { label: "Fork updates", click: () => void shell.openExternal("https://github.com/peyton2065/clauderipple") },
     { label: L.about, click: () => void dialog.showMessageBox({ title: "ClaudeRipple", message: `ClaudeRipple ${trayVersion()}`, detail: L.aboutDetail }) },
     { label: L.quit, role: "quit" },
   ];
