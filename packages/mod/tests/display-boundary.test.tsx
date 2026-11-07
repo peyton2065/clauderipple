@@ -6,7 +6,6 @@ import { LIST_SHOWN, renderAgents } from '../hooks/ui/agents'
 import { renderAlert } from '../hooks/ui/alerts'
 import { renderBand, renderFooter } from '../hooks/ui/band'
 import { renderLog } from '../hooks/ui/log'
-import { renderPhoneQueue } from '../hooks/ui/queue'
 import { renderSettings } from '../hooks/ui/settings'
 import { renderSetup } from '../hooks/ui/setup'
 import { DISPLAY, displayChars, displayText } from '../hooks/ui/display'
@@ -57,28 +56,12 @@ test('wide agent panes keep every card they list and clickable open controls wit
   expect(opened.length).toBe(6 * LIST_SHOWN)
 })
 
-test('a 120000 character phone queue preview leaves the following band controls pressable', async ($, on) => {
-  let presses = 0
-  on('ui.render', { component: 'Pane', requestId: 'queue-budget' }, ($, e) => {
-    const el = $.ui.resolve(e), f = frame(e.surface)
-    return <el.Box flexDirection="column">{renderPhoneQueue(el, f, { count: 1, first: '메'.repeat(120_000) })}{renderBand(el, f, DASH, { ...BAND, openSettings: () => { presses++ } })}</el.Box>
-  })
-  for (const surface of SURFACES) {
-    const ui = await $.ui.mount({ plugin: 'test', surface, component: 'Pane', requestId: 'queue-budget', props: PROPS })
-    expect(await ui.find({ key: 'settings' })).toBeDefined()
-    await ui.press({ key: 'settings' })
-    await ui.unmount()
-  }
-  expect(presses).toBe(4)
-})
-
 test('external controls and ANSI are removed before every surface builds its tree', async ($, on) => {
   on('ui.render', { component: 'Pane', requestId: /^controls-/ }, ($, e) => {
     const el = $.ui.resolve(e), f = frame(e.surface)
     const jev = { source: null, test: { state: 'fail' as const, message: CONTROL } }
     const draws: Record<string, () => RenderNode> = {
       log: () => renderLog(el, f, { rows: [record(0, CONTROL)], mineOnly: false }, { toggleScope: noop }),
-      queue: () => renderPhoneQueue(el, f, { count: 1, first: CONTROL }),
       alert: () => renderAlert(el, f, { kind: 'judgeDown', judge: 'jev', reason: CONTROL }, ALERT),
       settings: () => renderSettings(el, f, { settings: SETTINGS, jev }, QUICK),
       setup: () => renderSetup(el, f, { step: 1, draft: SETTINGS, jev }, { ...QUICK, back: noop, next: noop, finish: noop, skip: noop }),
@@ -87,7 +70,7 @@ test('external controls and ANSI are removed before every surface builds its tre
     }
     return draws[e.requestId!.slice(9)]!() as RenderElement
   })
-  for (const surface of SURFACES) for (const name of ['log', 'queue', 'alert', 'settings', 'setup', 'agents', 'band']) {
+  for (const surface of SURFACES) for (const name of ['log', 'alert', 'settings', 'setup', 'agents', 'band']) {
     const ui = await $.ui.mount({ plugin: 'test', surface, component: 'Pane', requestId: 'controls-' + name, props: PROPS })
     expect((await ui.findAll({ type: 'Text' })).length > 0, surface + ' ' + name).toBe(true)
     expect(JSON.stringify(await ui.drawn())).not.toContain('[31m')
@@ -142,7 +125,7 @@ test('a huge routed model cannot exceed Box width or remove the band', async ($,
   }
 })
 
-for (const failedKey of ['lang', 'settings', 'phoneQueue', 'judgeDown', 'jev', 'setupStep', 'requests']) {
+for (const failedKey of ['lang', 'settings', 'judgeDown', 'jev', 'setupStep', 'requests']) {
   test('state failure ' + failedKey + ' draws a usable fallback and recovers without re-reading failed state', async ($, on) => {
     mock.clock(on, { now: 1_000_000 })
     let failed = true, reads = 0, closed = 0

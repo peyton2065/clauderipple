@@ -7,7 +7,7 @@
 // ("사용함 도구 N개") always last, a file or page counted once, every kind shown (the line is cut at
 // the pane's edge), the first word capitalised. Ours put the unnamed tools wherever they first came
 // and read differently from the app's view beside it. The phone app words a run by the same rules
-// (packages/remote/src/tool-details.ts `activitySummary`); the mod cannot import it, as Claude Code
+// The mod cannot import the phone implementation, as Claude Code
 // loads the mod as its own folder (dist/mod in an npm install, scripts/build-npm.mjs).
 
 import { t } from '../i18n.ts'

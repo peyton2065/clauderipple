@@ -11,7 +11,6 @@ import { renderAlert } from '../hooks/ui/alerts'
 import { renderBand } from '../hooks/ui/band'
 import { renderContext } from '../hooks/ui/context'
 import type { ContextView } from '../hooks/ui/context'
-import { renderPhoneQueue } from '../hooks/ui/queue'
 import { renderLog } from '../hooks/ui/log'
 import { renderLimits } from '../hooks/ui/limits'
 import { renderSettings } from '../hooks/ui/settings'
@@ -222,12 +221,6 @@ type Scene = { name: string; columns?: number; skin?: Skin; draw: (el: Els, fram
 
 const alert = (a: AlertView) => (el: Els, frame: Frame) => renderAlert(el, frame, a, noop)
 
-/** The band with the phone queue's strip over it, as register.tsx stacks them. */
-function queued(el: Els, frame: Frame, view: DashboardView, first: string): RenderElement {
-  const { Box } = el
-  return (<Box flexDirection="column" rowGap={0.5} width="100%" minWidth={0}>{renderPhoneQueue(el, frame, { count: 2, first })}{renderBand(el, frame, view, noop)}</Box>) as RenderElement
-}
-
 /** A session's context as `$.session.usage({ breakdown })` reports it (2.1.304's category names and theme keys). */
 const CONTEXT: SessionContextBreakdown = (() => {
   const max = 160_000
@@ -293,9 +286,6 @@ const SCENES: Scene[] = [
   { name: 'band-pinned-narrow', columns: 70, draw: (el, f) => site(el, f, { ...DASH, delegationPin: 'Sol', delegationSaid: '앞으로 솔로 해' }) },
   { name: 'band-pinned-tiny', columns: 40, draw: (el, f) => site(el, f, { ...DASH, delegationPin: 'GPT-6.1 Sol', delegationSaid: '앞으로 솔로 해' }) },
   { name: 'flat-band-pinned', skin: 'flat', draw: (el, f) => site(el, f, { ...DASH, delegationPin: 'Sol', delegationSaid: '앞으로 솔로 해' }) },
-  { name: 'band-phone-queue', draw: (el, f) => queued(el, f, { ...DASH, isWorking: true }, '홈 카드 제목이랑 점수 알약도 같이 정리해 줘') },
-  { name: 'band-phone-queue-long', columns: 70, draw: (el, f) => queued(el, f, { ...DASH, isWorking: true }, '이 날의 흐름 이것도 한국어가 좀 어색한데 사람마다 달라지는 리포트 같은 건 빼고 모든 한국어를 정리해서 자연스럽게') },
-  { name: 'band-phone-queue-flat', skin: 'flat', draw: (el, f) => queued(el, f, { ...DASH, isWorking: true }, '홈 카드 제목이랑 점수 알약도 같이 정리해 줘') },
   { name: 'band-deciding', draw: (el, f) => site(el, f, { ...DASH, effort: { level: null, mode: 'deciding', since: NOW - 500 } }) },
   { name: 'band-working', draw: (el, f) => site(el, f, { ...DASH, isWorking: true, warm: { on: true, pings: 2, cost: 9000 }, agents: { live: 2, total: 3 }, context: { percent: 64, tokens: 128_000, window: 200_000 }, mode: 'GPT 우선' }) },
   { name: 'band-compacted', draw: (el, f) => site(el, f, { ...DASH, agents: { live: 1, total: 1 }, compactions: 3 }) },

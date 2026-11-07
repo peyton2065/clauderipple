@@ -21,7 +21,6 @@ import { addTask, endTasks, endWithAgent, settleTasks, settleWithAgent, stillRun
 import { addAgentStep, addJudge, addPrompt, addRequest, addWarm, addWorker, emptyStats, formatStats, sentEffort } from './stats'
 import { besideBand, renderBand, renderFooter } from './ui/band'
 import { renderAlert } from './ui/alerts'
-import { PHONE_QUEUE_ROWS, renderPhoneQueue } from './ui/queue'
 import { renderSettings } from './ui/settings'
 import { renderSetup } from './ui/setup'
 import { renderAgents, renderAgentsFallback, talkOf } from './ui/agents'
@@ -35,7 +34,6 @@ import { EFFORTS, isRich, modelName, nextMinuteChange, routeOf, targetLabel } fr
 import type { AgentTalk, AgentsActions, AlertActions, AlertView, BandActions, DashboardView, Frame, LimitsActions, SettingsActions, SettingsView, SetupActions } from './ui/view'
 
 const line = atom({ plugin: 'ripple', key: 'line' } as const, null)
-const phoneQueue = atom({ plugin: 'ripple', key: 'phoneQueue' } as const, null)
 const last = atom({ plugin: 'ripple', key: 'last' } as const, null)
 const requests = atom({ plugin: 'ripple', key: 'requests' } as const, [])
 const logOpen = atom({ plugin: 'ripple', key: 'logOpen' } as const, false)
@@ -210,26 +208,6 @@ async function persistWorkerPick($: EngineInterface, entry: Record<string, unkno
   // A reporting failure must not poison the queue or undo the selected spawn either.
   workerLogWork = work.catch(() => undefined)
   await workerLogWork
-}
-/**
- * What the phone queued for this chat. The host keeps the queue (packages/remote/src/queue.ts) and
- * sends it when the turn ends; the Claude app never sees it, so the band says it is there. Keyed by
- * the phone's session id, which for a Claude app session is this one, or by `desktopId`.
- */
-export function phoneQueueOf(text: string | undefined, session: string): { count: number; first: string } | null {
-  if (!text) return null
-  for (const [key, value] of Object.entries(object(JSON.parse(text)))) {
-    const entry = object(value)
-    if (key !== session && entry.desktopId !== session) continue
-    const items = Array.isArray(entry.items) ? entry.items.map(object) : []
-    return items.length ? { count: items.length, first: typeof items[0]!.text === 'string' ? items[0]!.text : '' } : null
-  }
-  return null
-}
-async function refreshPhoneQueue($: EngineInterface, session: string): Promise<void> {
-  const path = `${await rippleHome($)}/remote/queue.json`
-  const next = await $.fs.exists(path) ? phoneQueueOf(await optionalFile($, path), session) : null
-  if (JSON.stringify(next) !== JSON.stringify(await read($, phoneQueue))) await update($, phoneQueue, () => next)
 }
 async function claudeHome($: EngineInterface): Promise<string> {
   return (await $.env.get('CLAUDE_CONFIG_DIR')) ?? `${await userHome($)}/.claude`
@@ -602,8 +580,6 @@ async function refreshRouter($: EngineInterface): Promise<void> {
     await settingsTask(() => syncSettings($, admin))
     await endModeIfOver($)
     const session = await $.session.id()
-    // Read even with the band hidden: the strip shows over whatever is above the prompt.
-    await refreshPhoneQueue($, session)
     const open = await isLogUp($)
     if (!open && await read($, bandHidden)) { await update($, line, () => null); return }
     const own = await $.http.fetch(`${admin}/api/requests?kind=messages&n=${open ? 60 : 20}&session=${encodeURIComponent(session)}`)
@@ -1500,123 +1476,6 @@ async function tick($: EngineInterface): Promise<void> {
   } catch (error) { await report($, 'session tick', error) }
   finally { ticking = false }
 }
-let inboxPolling = false
-let inboxRetryAt = 0
-/** A claim is never retried or submitted without a 200: a lost reply may already have claimed it. */
-async function pollPhoneInbox($: EngineInterface): Promise<void> {
-  if (inboxPolling) return
-  inboxPolling = true
-  try {
-    // Only the app's own CLI process types a phone message in (measured 2026-10-27: the app sets
-    // claude-desktop; the host's own runs say sdk-ts). Elsewhere this costs one env read a tick.
-    if (await $.env.get('CLAUDE_CODE_ENTRYPOINT') !== 'claude-desktop') return
-    if (await $.clock.now() < inboxRetryAt) return
-    const session = await $.session.id()
-    const admin = await adminUrl($)
-    const list = await $.http.fetch(`${admin}/api/phone-inbox?session=${encodeURIComponent(session)}`)
-    if (list.status !== 200) throw new Error(`inbox HTTP ${list.status}`)
-    const offers = object(JSON.parse(list.text)).offers
-    if (!Array.isArray(offers)) throw new Error('invalid inbox response')
-    for (const raw of offers) {
-      const offer = object(raw)
-      if (offer.sessionId !== session || typeof offer.itemId !== 'string' || !/^[\w-]{1,100}$/.test(offer.itemId) || typeof offer.text !== 'string') throw new Error('invalid inbox offer')
-      if (await $.session.id() !== session) return
-      const claimAt = await $.clock.now()
-      const claim = await $.http.fetch(`${admin}/api/phone-inbox/claim`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ itemId: offer.itemId }) })
-      if (claim.status === 409) continue
-      if (claim.status !== 200) throw new Error(`inbox claim HTTP ${claim.status}`)
-      let outcome: 'submitted' | 'failed' = 'failed'
-      try {
-        const now = await $.clock.now()
-        // A claim answered this late is not submitted: the host may be close to giving up on it.
-        if (now >= claimAt && now - claimAt < 10_000 && await $.session.id() === session) {
-          const sent = await $.prompt.submit({ text: offer.text, asUser: true })
-          if (!('drop' in sent)) outcome = 'submitted'
-        }
-      } catch { /* The host shows the failed item for a deliberate resend. */ }
-      const result = await $.http.fetch(`${admin}/api/phone-inbox/result`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ itemId: offer.itemId, outcome }) })
-      if (result.status !== 200) throw new Error(`inbox result HTTP ${result.status}`)
-    }
-    inboxRetryAt = 0
-  } catch {
-    inboxRetryAt = await $.clock.now() + 15_000
-    // Never log a transport or submit error: it may contain the person's message.
-    await report($, 'phone inbox', 'request failed')
-  } finally { inboxPolling = false }
-}
-type SettingsHelper = { sessionId: string; permissionMode: string; readAt: number }
-let settingsHelper: SettingsHelper | null = null
-let jobsPolling = false
-let jobsRetryAt = 0
-
-/** The app reports metadata as JSON in an MCP text block, not as a session transcript. */
-async function readSettingsHelper($: EngineInterface): Promise<SettingsHelper> {
-  const answer = await $.mcp.call('ccd_session_mgmt', 'get_session', { session_id: 'self' })
-  if (answer.isError) throw new Error('session metadata unavailable')
-  for (const block of answer.content) {
-    if (block.type !== 'text' || typeof block.text !== 'string') continue
-    const value = object(JSON.parse(block.text))
-    if (typeof value.sessionId === 'string' && /^[\w-]{1,100}$/.test(value.sessionId) && typeof value.permissionMode === 'string') {
-      return { sessionId: value.sessionId, permissionMode: value.permissionMode, readAt: await $.clock.now() }
-    }
-  }
-  throw new Error('invalid session metadata')
-}
-
-async function applySettingsJob($: EngineInterface, job: { appSessionId: string; model?: string; effort?: Effort }, helper: string, claimAt: number): Promise<void> {
-  for (const setting of ['model', 'effort'] as const) {
-    const value = job[setting]
-    if (!value) continue
-    // A permission change while polling must not open an approval card on the person's screen.
-    settingsHelper = await readSettingsHelper($)
-    if (settingsHelper.sessionId !== helper || settingsHelper.permissionMode !== 'bypassPermissions') throw new Error('helper permissions changed')
-    const now = await $.clock.now()
-    if (now < claimAt || now - claimAt >= 25_000) throw new Error('claim expired')
-    const answer = await $.mcp.call('ccd_session_mgmt', `set_session_${setting}`, { session_id: job.appSessionId, [setting]: value })
-    if (answer.isError) throw new Error(`${setting} change failed`)
-  }
-}
-
-/** Only a claimed job can change another session; a claimed job is never retried. */
-async function pollSettingsJobs($: EngineInterface): Promise<void> {
-  if (jobsPolling) return
-  jobsPolling = true
-  try {
-    if (await $.env.get('CLAUDE_CODE_ENTRYPOINT') !== 'claude-desktop') return
-    const now = await $.clock.now()
-    if (now < jobsRetryAt) return
-    if (!settingsHelper || now - settingsHelper.readAt >= 180_000 || now < settingsHelper.readAt) settingsHelper = await readSettingsHelper($)
-    // Other modes can ask for approval of another session's change, which a phone user cannot answer.
-    if (settingsHelper.permissionMode !== 'bypassPermissions') return
-    const helper = settingsHelper.sessionId
-    const admin = await adminUrl($)
-    const list = await $.http.fetch(`${admin}/api/settings-jobs?exclude=${encodeURIComponent(helper)}`)
-    if (list.status !== 200) throw new Error('settings jobs request failed')
-    const jobs = object(JSON.parse(list.text)).jobs
-    if (!Array.isArray(jobs)) throw new Error('invalid settings jobs response')
-    for (const raw of jobs) {
-      const job = object(raw)
-      const effort = effortOf(job.effort)
-      if (typeof job.jobId !== 'string' || !/^[\w-]{1,100}$/.test(job.jobId) || typeof job.appSessionId !== 'string' || !/^[\w-]{1,100}$/.test(job.appSessionId) || job.appSessionId === helper ||
-          job.model !== undefined && (typeof job.model !== 'string' || !/^[\w.\-\[\]@:]{1,100}$/.test(job.model)) || job.effort !== undefined && !effort || job.model === undefined && !effort) throw new Error('invalid settings job')
-      const claimAt = await $.clock.now()
-      const claim = await $.http.fetch(`${admin}/api/settings-jobs/claim`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jobId: job.jobId, helper }) })
-      if (claim.status === 409) continue
-      if (claim.status !== 200) throw new Error('settings job claim failed')
-      let outcome: 'applied' | 'failed' = 'applied'
-      try { await applySettingsJob($, { appSessionId: job.appSessionId, ...(typeof job.model === 'string' ? { model: job.model } : {}), ...(effort ? { effort } : {}) }, helper, claimAt) }
-      catch { outcome = 'failed'; settingsHelper = null }
-      const result = await $.http.fetch(`${admin}/api/settings-jobs/result`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ jobId: job.jobId, outcome, ...(outcome === 'failed' ? { detail: 'settings change failed' } : {}) }) })
-      if (result.status !== 200 || outcome === 'failed') throw new Error('settings job failed')
-    }
-    jobsRetryAt = 0
-  } catch {
-    settingsHelper = null
-    jobsRetryAt = await $.clock.now() + 15_000
-    // Transport and tool errors can contain private data; log neither those nor the job.
-    await report($, 'settings jobs', 'request failed')
-  } finally { jobsPolling = false }
-}
 /*
  * Keep-warm survives a restart of this session's process. The memo and the last real reply live in
  * the atoms, which are this process's memory alone; the app restarted every session's CLI at 12:06
@@ -1668,8 +1527,6 @@ function startTimers($: EngineInterface): void {
   if (timersStarted) return
   timersStarted = true
   $.clock.after(1, async () => { await refreshRouter($); await tick($) })
-  $.clock.every(1500, async () => { await pollPhoneInbox($) })
-  $.clock.every(3000, async () => { await pollSettingsJobs($) })
   $.clock.every(3000, async () => { await refreshRouter($) })
   $.clock.every(15000, async () => { await tick($) })
   $.clock.every(1000, async () => { await agentsClock($) })
@@ -2544,13 +2401,10 @@ export const register: Register = on => {
       if (which === 'setup') {
         return after(renderSetup(el, frame, { draft: normalizeSettings(await read($, settingsDraft) ?? await read($, settings)), jev: await read($, jev), step: await read($, setupStep) }, setupActions($)))
       }
-      // What the phone queued floats over whatever is here, only while something waits (ui/queue.tsx).
-      const queued = await read($, phoneQueue)
-      // Theirs sits under what the phone queued and over the band.
-      const over = (node: RenderNode | null): RenderElement => (queued || theirs
-        ? <Box flexDirection="column" rowGap={0.5} width="100%" minWidth={0}>{queued ? renderPhoneQueue(el, frame, queued) : null}{theirs}{node}</Box>
+      const over = (node: RenderNode | null): RenderElement => (theirs
+        ? <Box flexDirection="column" rowGap={0.5} width="100%" minWidth={0}>{theirs}{node}</Box>
         : node ?? drawn) as RenderElement
-      const below = queued ? { ...frame, maxRows: Math.max(1, frame.maxRows - PHONE_QUEUE_ROWS) } : frame
+      const below = frame
       if (await read($, bandHidden)) return over(null)
       const alert = await alertView($, frame.now)
       if (alert) return over(renderAlert(el, below, alert, alertActions($, alert)))
