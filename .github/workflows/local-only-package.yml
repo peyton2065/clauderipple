@@ -33,6 +33,7 @@ jobs:
           tgz="$(find . -maxdepth 1 -name 'clauderipple-*.tgz' -print -quit)"
           test -n "$tgz"
           tar -tzf "$tgz" > package-contents.txt
+          cat package-contents.txt
           if grep -Ei '(^|/)(remote|relay|ripple-host)(/|[.-])|remote-tunnel|remote-host' package-contents.txt; then
             echo "::error::Remote-control files found in package"
             exit 1
@@ -43,6 +44,10 @@ jobs:
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
           npm install --prefix "$tmp" --ignore-scripts --no-audit --no-fund "$(realpath "$tgz")" >/dev/null
+          if grep -R -nE 'remote/src|remote-tunnel|remote-host|/api/phone/|/api/remote|ripple-host' "$tmp/node_modules/clauderipple/dist"; then
+            echo "::error::Remote-control code reference found in package"
+            exit 1
+          fi
           node "$tmp/node_modules/clauderipple/bin/clauderipple.js" --help > "$tmp/help.txt"
           if grep -Eq '^[[:space:]]*remote([[:space:]]|$)' "$tmp/help.txt"; then
             echo "::error::Remote command found in packaged CLI"
